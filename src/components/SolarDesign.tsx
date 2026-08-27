@@ -12,17 +12,24 @@ import {
   Download,
   Settings,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  MapPin
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { exportToPDF } from '@/src/lib/exportUtils';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
+import Solar3DViewer from './Solar3DViewer';
 
 export default function SolarDesign() {
   const [activeTab, setActiveTab] = useState<'layout' | 'electrical' | 'simulation'>('layout');
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   
+  // Lat/Long Coordinates State
+  const [lat, setLat] = useState<number>(17.3850);
+  const [lng, setLng] = useState<number>(78.4867);
+  const [address, setAddress] = useState<string>('Jubilee Hills, Hyderabad, Telangana');
+
   // Simulated Interactive States
   const [roofDrawn, setRoofDrawn] = useState(false);
   const [obstructionsAdded, setObstructionsAdded] = useState(false);
@@ -283,40 +290,54 @@ export default function SolarDesign() {
         </div>
 
         {/* Main Canvas Area */}
-        <div className="lg:col-span-3 bg-slate-100 rounded-2xl border border-slate-200 relative overflow-hidden flex flex-col">
-          <div className="absolute top-4 right-4 z-10 bg-white rounded-lg shadow-sm border border-slate-200 p-1 flex">
+        <div className="lg:col-span-3 bg-slate-100 rounded-3xl border border-slate-200 relative overflow-hidden flex flex-col min-h-[500px]">
+          <div className="absolute top-4 right-4 z-20 bg-white rounded-2xl shadow-md border border-slate-200 p-1 flex">
             <button 
               onClick={() => setViewMode('2d')}
-              className={cn("px-3 py-1.5 text-xs font-bold rounded-md transition-colors", viewMode === '2d' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50')}
+              className={cn("px-3.5 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer", viewMode === '2d' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100')}
             >
-              2D Top
+              2D Satellite
             </button>
             <button 
               onClick={() => setViewMode('3d')}
-              className={cn("px-3 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-1", viewMode === '3d' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50')}
+              className={cn("px-3.5 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer flex items-center gap-1.5", viewMode === '3d' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100')}
             >
-              <Box className="w-3 h-3"/> 3D View
+              <Box className="w-3.5 h-3.5"/> Interactive 3D Model
             </button>
           </div>
 
-          <div className="flex-1 flex items-center justify-center relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] overflow-hidden">
-             {/* Simulated Canvas Content */}
-             <div className="text-center w-full h-full flex items-center justify-center relative">
-                {viewMode === '2d' ? (
-                  <div className="w-[600px] h-[400px] bg-slate-200/50 border-2 border-dashed border-slate-400 rounded-lg flex flex-col items-center justify-center relative shadow-inner overflow-hidden">
-                    <img 
-                        src="https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=800&h=600" 
-                        alt="Satellite Roof" 
-                        className="absolute inset-0 w-full h-full object-cover opacity-50 grayscale"
-                    />
-                    
-                    {!roofDrawn && (
-                        <>
-                            <MapIcon className="w-12 h-12 text-slate-600 mb-2 relative z-10" />
-                            <p className="text-slate-700 font-bold text-sm relative z-10">Satellite View Canvas</p>
-                            <p className="text-slate-500 font-medium text-xs relative z-10">Draw a roof boundary to begin</p>
-                        </>
-                    )}
+          {viewMode === '3d' ? (
+            <div className="p-2">
+              <Solar3DViewer
+                lat={lat}
+                lng={lng}
+                address={address}
+                panelCount={panelCount}
+                tiltAngle={tiltAngle}
+                onDesignChange={(d) => {
+                  setPanelCount(d.panelCount);
+                  setTiltAngle(d.tiltAngle);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center relative overflow-hidden p-6">
+              {/* Simulated Canvas Content */}
+              <div className="text-center w-full h-full flex items-center justify-center relative">
+                <div className="w-[600px] h-[400px] bg-slate-200/50 border-2 border-dashed border-slate-400 rounded-2xl flex flex-col items-center justify-center relative shadow-inner overflow-hidden">
+                  <img 
+                      src="https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=800&h=600" 
+                      alt="Satellite Roof" 
+                      className="absolute inset-0 w-full h-full object-cover opacity-50 grayscale"
+                  />
+                  
+                  {!roofDrawn && (
+                      <>
+                          <MapIcon className="w-12 h-12 text-slate-600 mb-2 relative z-10" />
+                          <p className="text-slate-700 font-bold text-sm relative z-10">Satellite Roof Canvas ({lat.toFixed(4)}°, {lng.toFixed(4)}°)</p>
+                          <p className="text-slate-500 font-medium text-xs relative z-10">Draw a roof boundary or switch to 3D Model View</p>
+                      </>
+                  )}
                     
                     {/* Simulated Roof / Panels */}
                     {roofDrawn && (
@@ -353,39 +374,23 @@ export default function SolarDesign() {
                         </div>
                     )}
                   </div>
-                ) : (
-                  <div className="w-[600px] h-[400px] bg-slate-800 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                    <img 
-                        src="https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?auto=format&fit=crop&q=80&w=800&h=600" 
-                        alt="3D Roof" 
-                        className="absolute inset-0 w-full h-full object-cover opacity-30 mix-blend-overlay"
-                    />
-                    <Box className="w-12 h-12 text-slate-300 mb-2 relative z-10 animate-bounce" />
-                    <p className="text-white font-bold text-sm relative z-10">3D Structural Visualization</p>
-                    <p className="text-slate-400 text-xs mt-1 relative z-10">(WebGL Context Simulation)</p>
-                    {panelsPlaced && (
-                        <div className="absolute bottom-10 px-4 py-2 bg-black/50 text-emerald-400 text-xs font-bold rounded-lg border border-emerald-500/30">
-                            {panelCount} Panels Rendered in 3D (Tilt: {tiltAngle}°)
-                        </div>
-                    )}
-                  </div>
-                )}
-             </div>
+              </div>
+            </div>
+          )}
 
-             {/* Sun Path Overlay Simulation */}
-             {activeTab === 'simulation' && shadingRun && viewMode === '2d' && (
-               <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30">
-                 <div className="w-[800px] h-[800px] rounded-full border-2 border-amber-300/40 relative">
-                   <div className="absolute top-[10%] left-[20%] w-12 h-12 bg-amber-400 rounded-full blur-sm shadow-[0_0_50px_20px_rgba(251,191,36,0.5)] flex items-center justify-center animate-pulse">
-                     <Sun className="w-6 h-6 text-white"/>
-                   </div>
-                   <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 100 100">
-                     <path d="M 10 50 Q 50 10 90 50" fill="none" stroke="#fbbf24" strokeWidth="0.5" strokeDasharray="2,2"/>
-                   </svg>
-                 </div>
-               </div>
-             )}
-          </div>
+          {/* Sun Path Overlay Simulation */}
+          {activeTab === 'simulation' && shadingRun && viewMode === '2d' && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30">
+              <div className="w-[800px] h-[800px] rounded-full border-2 border-amber-300/40 relative">
+                <div className="absolute top-[10%] left-[20%] w-12 h-12 bg-amber-400 rounded-full blur-sm shadow-[0_0_50px_20px_rgba(251,191,36,0.5)] flex items-center justify-center animate-pulse">
+                  <Sun className="w-6 h-6 text-white"/>
+                </div>
+                <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 100 100">
+                  <path d="M 10 50 Q 50 10 90 50" fill="none" stroke="#fbbf24" strokeWidth="0.5" strokeDasharray="2,2"/>
+                </svg>
+              </div>
+            </div>
+          )}
 
           {/* Bottom Toolbar */}
           <div className="h-12 bg-white border-t border-slate-200 px-4 flex items-center justify-between">
@@ -402,4 +407,3 @@ export default function SolarDesign() {
     </div>
   );
 }
-

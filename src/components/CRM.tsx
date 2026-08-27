@@ -12,9 +12,10 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { Lead, LeadStatus } from '@/src/types';
-import { Plus, Search, Filter, MoreVertical, Mail, Phone, MapPin, Users, FileText, Edit2, Trash2, ShieldCheck, Sparkles, Building2 } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, Mail, Phone, MapPin, Users, FileText, Edit2, Trash2, ShieldCheck, Sparkles, Building2, Loader2, Compass, LocateFixed, Box } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '@/src/context/AuthContext';
+import Solar3DViewer from './Solar3DViewer';
 
 export default function CRM({ initialFilter }: { initialFilter?: string }) {
   const { user } = useAuth();
@@ -22,8 +23,10 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
   const [searchTerm, setSearchTerm] = useState(initialFilter || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
   const [showTrash, setShowTrash] = useState(false);
+  const [selected3DLead, setSelected3DLead] = useState<Lead | null>(null);
 
   // Role Scoped Lead Filtering
   const roleScopedLeads = leads.filter(lead => {
@@ -81,6 +84,60 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
     });
     return () => unsubscribe();
   }, []);
+
+  // Reverse Geocoding for CRM Lead Address: GPS Coords -> Address, City, District, State, Pincode
+  const handleDropPinGPS = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser.");
+      return;
+    }
+    setIsDetectingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const gpsStr = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+          const data = await res.json();
+          if (data && data.address) {
+            const addr = data.address;
+            const door = addr.house_number || addr.building || addr.unit || addr.house || '';
+            const street = [addr.road, addr.suburb, addr.neighbourhood, addr.industrial].filter(Boolean).join(', ') || data.display_name?.split(',')[0] || '';
+            const fullAddress = door ? `${door}, ${street}` : street;
+            const city = addr.city || addr.town || addr.village || '';
+            const district = addr.county || addr.district || city || '';
+            const state = addr.state || 'Telangana';
+            const pincode = addr.postcode || '';
+
+            setNewLead(prev => ({
+              ...prev,
+              gpsLocation: gpsStr,
+              address: fullAddress || prev.address,
+              city: city || prev.city,
+              district: district || prev.district,
+              state: state || prev.state,
+              pincode: pincode || prev.pincode
+            }));
+          } else {
+            setNewLead(prev => ({ ...prev, gpsLocation: gpsStr }));
+          }
+        } catch (err) {
+          console.error("Reverse geocoding error:", err);
+          setNewLead(prev => ({ ...prev, gpsLocation: gpsStr }));
+        } finally {
+          setIsDetectingLocation(false);
+        }
+      },
+      (error) => {
+        console.error("GPS Error:", error);
+        setIsDetectingLocation(false);
+        alert("Unable to retrieve location. Please enter manually.");
+      },
+      { timeout: 10000 }
+    );
+  };
 
   const handleSubmitLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -439,6 +496,14 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                   </td>
                   <td className="px-6 py-5 text-right space-x-2">
                     <button
+                      onClick={() => setSelected3DLead(lead)}
+                      className="p-2 hover:bg-teal-50 hover:shadow-sm rounded-lg text-teal-600 transition-all border border-transparent hover:border-teal-100 group"
+                      title="View 3D Rooftop Solar Model (GPS Lat/Long)"
+                    >
+                      <Box className="w-4 h-4" />
+                    </button>
+
+                    <button
                       onClick={() => {
                         setSelectedLeadForQuotation(lead);
                         setIsQuotationModalOpen(true);
@@ -619,24 +684,20 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        if (navigator.geolocation) {
-                          navigator.geolocation.getCurrentPosition(
-                            (position) => {
-                              setNewLead({ ...newLead, gpsLocation: `${position.coords.latitude}, ${position.coords.longitude}` });
-                            },
-                            (error) => {
-                              alert("Unable to retrieve location. Please enter manually.");
-                            }
-                          );
-                        } else {
-                          alert("Geolocation is not supported by your browser.");
-                        }
-                      }}
-                      className="whitespace-nowrap px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200 transition-colors"
+                      onClick={handleDropPinGPS}
+                      disabled={isDetectingLocation}
+                      className="whitespace-nowrap px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-lg transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                      title="Auto-detect current GPS location and reverse-geocode full street address, city, district, state & pincode"
                     >
-                      <MapPin className="w-4 h-4 inline-block mr-1" />
-                      Drop Pin
+                      {isDetectingLocation ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Auto-Geocoding...
+                        </>
+                      ) : (
+                        <>
+                          <LocateFixed className="w-4 h-4" /> 📍 Drop Pin & Auto-Geocode
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1099,6 +1160,30 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3D ROOFTOP SOLAR VIEW MODAL */}
+      {selected3DLead && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200">
+            <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center text-white">
+              <div>
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">GPS 3D CAD Rooftop Simulation</span>
+                <h3 className="text-xl font-black flex items-center gap-2">
+                  <Box className="w-5 h-5 text-emerald-400" /> 3D Rooftop Solar View — {selected3DLead.name}
+                </h3>
+              </div>
+              <button onClick={() => setSelected3DLead(null)} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors text-xl font-bold">&times;</button>
+            </div>
+            <div className="p-4">
+              <Solar3DViewer 
+                lat={selected3DLead.gpsLocation && selected3DLead.gpsLocation.includes(',') ? parseFloat(selected3DLead.gpsLocation.split(',')[0]) : 17.3850}
+                lng={selected3DLead.gpsLocation && selected3DLead.gpsLocation.includes(',') ? parseFloat(selected3DLead.gpsLocation.split(',')[1]) : 78.4867}
+                address={selected3DLead.address ? `${selected3DLead.address}, ${selected3DLead.city || ''}` : selected3DLead.name}
+              />
+            </div>
           </div>
         </div>
       )}

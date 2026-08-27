@@ -11,6 +11,7 @@ import { cn, formatCurrency } from '@/src/lib/utils';
 import { format } from 'date-fns';
 import { collection, query, where, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
+import { useToast } from '@/src/context/ToastContext';
 
 interface ProjectDetailsProps {
   project: Project;
@@ -62,6 +63,7 @@ const SAMPLE_INSTALLATION_PHOTOS = [
 ];
 
 export default function ProjectDetails({ project, onBack }: ProjectDetailsProps) {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'team' | 'photos' | 'review'>('pipeline');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>(DEFAULT_STAFF);
@@ -121,12 +123,13 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
     return () => unsubTasks();
   }, [project.id]);
 
-  // Handle stage change with mandatory site photo gatekeeper
+  // Handle stage change with mandatory site photo gatekeeper & auto completion rule
   const handleUpdateStage = async (newStage: ProjectStatus) => {
     // 1. Mandatory Site Survey Photos check when assigning / moving to In Process or Assigned Installation
     if (['In Process', 'Assigned Installation'].includes(newStage) && (!currentProject.siteSurveyImagesUrls || currentProject.siteSurveyImagesUrls.length === 0)) {
       setPhotoModalType('survey');
       setActiveTab('photos');
+      toast.warning("Site Survey photos are required before moving to In Process or Installation.", "Survey Photos Required");
       return;
     }
 
@@ -134,22 +137,30 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
     if (['Installation Complete', 'Verification'].includes(newStage) && (!currentProject.installationImagesUrls || currentProject.installationImagesUrls.length === 0)) {
       setPhotoModalType('installation');
       setActiveTab('photos');
+      toast.warning("Installation proof photos are required before completing installation.", "Installation Photos Required");
       return;
+    }
+
+    // Auto-Completed rule: If stage is Subsidy Released, auto mark status as Completed
+    let targetStage = newStage;
+    if (newStage === 'Subsidy Released') {
+      targetStage = 'Completed';
     }
 
     const updatedHistory = [
       ...(currentProject.history || []),
-      { stage: newStage, timestamp: new Date().toISOString(), note: `Stage changed to ${newStage}` }
+      { stage: targetStage, timestamp: new Date().toISOString(), note: `Stage changed to ${targetStage}${newStage === 'Subsidy Released' ? ' (Auto-Completed on Subsidy Release)' : ''}` }
     ];
 
     try {
       await updateDoc(doc(db, 'projects', currentProject.id), {
-        status: newStage,
+        status: targetStage,
         history: updatedHistory
       });
-      alert(`✅ Project stage updated to: ${newStage}`);
+      toast.success(`Project stage updated to: ${targetStage}`, 'Stage Updated');
     } catch (err) {
       console.error('Error updating stage:', err);
+      toast.error('Failed to update project stage.', 'Stage Error');
     }
   };
 
@@ -163,9 +174,10 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
         siteSurveyCompletedAt: new Date().toISOString()
       });
       setPhotoModalType(null);
-      alert("✅ Site survey photos saved successfully!");
+      toast.success("Site survey photos saved successfully!", "Photos Saved");
     } catch (err) {
       console.error("Error saving survey photos:", err);
+      toast.error("Failed to save survey photos.", "Error");
     }
   };
 
@@ -179,9 +191,10 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
         installationCompletedAt: new Date().toISOString()
       });
       setPhotoModalType(null);
-      alert("✅ Installation proof photos saved successfully!");
+      toast.success("Installation proof photos saved successfully!", "Photos Saved");
     } catch (err) {
       console.error("Error saving installation photos:", err);
+      toast.error("Failed to save installation photos.", "Error");
     }
   };
 

@@ -29,6 +29,7 @@ import { exportToPDF, exportToExcel } from '@/src/lib/exportUtils';
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, addDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useAuth } from '@/src/context/AuthContext';
+import { useToast } from '@/src/context/ToastContext';
 
 type TabType = 'po' | 'invoices' | 'employees' | 'tasks' | 'payments' | 'dispatch';
 
@@ -67,6 +68,7 @@ export interface VendorTask {
 
 export default function VendorPortal() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('po');
   const [pos, setPOs] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -166,7 +168,7 @@ export default function VendorPortal() {
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (filteredEmployees.length >= userLimit) {
-      alert(`⚠️ Subscription User Limit Reached (${filteredEmployees.length}/${userLimit} Users).\n\nPlease upgrade your Subscription Plan in Subscription Management to add more vendor employees.`);
+      toast.warning(`Subscription User Limit Reached (${filteredEmployees.length}/${userLimit} Users). Please upgrade your Subscription Plan to add more vendor employees.`, 'User Limit Reached');
       return;
     }
 
@@ -218,9 +220,10 @@ export default function VendorPortal() {
         }
       });
 
-      alert(`✅ Vendor Employee ${createdName} created successfully!\n\n📧 Login Email: ${createdEmail}\n🔑 Initial Password: ${tempPass}\n\nThe employee can sign in with these credentials and will be prompted to change their password on first login.`);
+      toast.success(`Vendor Employee ${createdName} created! Email: ${createdEmail}, Password: ${tempPass}`, 'Employee Created');
     } catch (err) {
       console.error('Error adding employee:', err);
+      toast.error('Failed to create vendor employee.', 'Error');
     }
   };
 
@@ -228,8 +231,10 @@ export default function VendorPortal() {
     if (window.confirm("Are you sure you want to remove this vendor employee?")) {
       try {
         await deleteDoc(doc(db, 'vendorEmployees', empId));
+        toast.info("Vendor employee account removed.", "Employee Removed");
       } catch (err) {
         console.error('Error deleting employee:', err);
+        toast.error("Failed to remove employee.", "Error");
       }
     }
   };
@@ -237,7 +242,7 @@ export default function VendorPortal() {
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.assignedToEmail) {
-      alert("Please select an employee to assign this task.");
+      toast.warning("Please select an employee to assign this task.", "Assignee Required");
       return;
     }
 
@@ -265,15 +270,17 @@ export default function VendorPortal() {
         priority: 'Medium',
         dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0]
       });
-      alert(`✅ Task "${newTask.title}" assigned to ${assignedEmp?.name || newTask.assignedToEmail}!`);
+      toast.success(`Task "${newTask.title}" assigned to ${assignedEmp?.name || newTask.assignedToEmail}!`, 'Task Assigned');
     } catch (err) {
       console.error('Error creating task:', err);
+      toast.error("Failed to create vendor task.", "Task Error");
     }
   };
 
   const handleUpdateTaskStatus = async (taskId: string, newStatus: 'Pending' | 'In Progress' | 'Completed') => {
     try {
       await updateDoc(doc(db, 'vendorTasks', taskId), { status: newStatus });
+      toast.info(`Task status updated to ${newStatus}.`, "Status Updated");
     } catch (err) {
       console.error('Error updating task status:', err);
     }
@@ -283,6 +290,7 @@ export default function VendorPortal() {
     if (window.confirm("Are you sure you want to delete this task?")) {
       try {
         await deleteDoc(doc(db, 'vendorTasks', taskId));
+        toast.info("Vendor task deleted.", "Task Deleted");
       } catch (err) {
         console.error('Error deleting task:', err);
       }
@@ -305,9 +313,10 @@ export default function VendorPortal() {
         status: 'Accepted',
         stage: 2
       });
-      alert("✅ Purchase Order accepted successfully! Global Admin has been notified.");
+      toast.success("Purchase Order accepted successfully! Global Admin has been notified.", "PO Accepted");
     } catch (err) {
       console.error(err);
+      toast.error("Failed to accept Purchase Order.", "Error");
     }
   };
 
@@ -320,9 +329,10 @@ export default function VendorPortal() {
         try {
           await updateDoc(doc(db, 'users', user.uid), { companyLogo: logoDataUrl });
           await updateDoc(doc(db, 'vendorAccounts', user.uid), { companyLogo: logoDataUrl });
-          alert("✅ Vendor Company Logo updated successfully!");
+          toast.success("Vendor Company Logo updated successfully!", "Branding Updated");
         } catch (err) {
           console.error('Error uploading logo:', err);
+          toast.error("Failed to update company logo.", "Error");
         }
       };
       reader.readAsDataURL(file);

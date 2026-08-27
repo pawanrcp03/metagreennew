@@ -31,6 +31,7 @@ import MasterSettings from './components/MasterSettings';
 import Login from './components/Login';
 import LandingPage from './components/LandingPage';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import { ToastProvider, useToast } from './context/ToastContext';
 
 import { ViewType, AuthenticatedUser } from './types';
 import { 
@@ -59,6 +60,7 @@ function AppContent() {
   // 1. ALL HOOKS DECLARED TOGETHER AT TOP (Rule of Hooks)
   const { user, loading } = useAuth();
   const { logos } = useLogos();
+  const { toast } = useToast();
 
   const [currentView, setView] = useState<ViewType>('dashboard');
   const [isPunchedIn, setIsPunchedIn] = useState(false);
@@ -71,6 +73,22 @@ function AppContent() {
     return sessionStorage.getItem('metagreen_landing') === 'true';
   });
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      sessionStorage.removeItem('metagreen_landing');
+      localStorage.clear();
+      sessionStorage.clear();
+      await authService.logout();
+      setIsLandingPageMode(true);
+      setView('dashboard');
+      setCurrentFilter(undefined);
+      setIsProfileModalOpen(false);
+      toast.info('Session ended cleanly. You have been logged out.', 'Logged Out');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
 
   useEffect(() => {
     if (isDarkMode) {
@@ -158,10 +176,7 @@ function AppContent() {
             Your account is currently {user.status.toLowerCase()}. Please wait for an administrator to review and approve your account.
           </p>
           <button 
-            onClick={() => {
-              authService.logout();
-              setIsLandingPageMode(true);
-            }}
+            onClick={handleLogout}
             className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors"
           >
             Sign Out
@@ -257,8 +272,10 @@ function AppContent() {
           <div className="truncate text-slate-300 text-[11px] font-medium">
             {user?.role === 'Vendor' ? (
               <span>⏳ 7-Day Free Trial: 6 Days Remaining • Plan: Starter Vendor (3 Users, 10 GB Storage)</span>
+            ) : user?.role === 'Installer' ? (
+              <span>🔧 Field Installer Mode Active • Assigned Site Projects, Site BOM Consumption & 3D Rooftop Engine Live</span>
             ) : (
-              <span>📢 Solar Installer Signup Active • PM Surya Ghar Subsidy Sync Live • 70:30 Tax Invoice Split Enabled</span>
+              <span>📢 Solar Installer Login Active • PM Surya Ghar Subsidy Sync Live • 70:30 Tax Invoice Split Enabled</span>
             )}
           </div>
         </div>
@@ -314,10 +331,7 @@ function AppContent() {
 
             {/* Logout Icon */}
             <button 
-              onClick={() => {
-                authService.logout();
-                setIsLandingPageMode(true);
-              }}
+              onClick={handleLogout}
               className="p-2 hover:bg-slate-800 rounded-full text-slate-300 hover:text-red-400 transition-colors" 
               title="Log out"
             >
@@ -457,11 +471,7 @@ function AppContent() {
                 </button>
 
                 <button 
-                  onClick={() => {
-                    setIsProfileModalOpen(false);
-                    authService.logout();
-                    setIsLandingPageMode(true);
-                  }}
+                  onClick={handleLogout}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 font-bold rounded-xl transition-colors text-xs"
                 >
                   <LogOut className="w-4 h-4" />
@@ -486,10 +496,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LogoProvider>
-        <AppContent />
-      </LogoProvider>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <LogoProvider>
+          <AppContent />
+        </LogoProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }

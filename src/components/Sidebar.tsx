@@ -102,7 +102,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'Roof & Site Inspection',
           description: 'Roof measurements, before/after photos & power bill uploads',
           icon: Map,
-          roles: ['Super Admin', 'Solar Company Admin', 'Regional Manager', 'Survey Engineer', 'Project Manager']
+          roles: ['Super Admin', 'Solar Company Admin', 'Regional Manager', 'Survey Engineer', 'Project Manager', 'Installer']
         },
         {
           id: 'solar-design',
@@ -110,7 +110,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'PV System Design',
           description: 'CAD 3D layout, shading analysis & string sizing',
           icon: PenTool,
-          roles: ['Super Admin', 'Solar Company Admin', 'Design Engineer', 'Project Manager']
+          roles: ['Super Admin', 'Solar Company Admin', 'Design Engineer', 'Project Manager', 'Installer']
         },
         {
           id: 'proposal',
@@ -150,7 +150,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'Stock & Auto Receipts',
           description: 'Auto-add vendor accepted PO items into warehouse stock',
           icon: Package,
-          roles: ['Super Admin', 'Solar Company Admin', 'Warehouse Manager', 'Procurement Officer']
+          roles: ['Super Admin', 'Solar Company Admin', 'Warehouse Manager', 'Procurement Officer', 'Installer']
         },
         {
           id: 'projects',

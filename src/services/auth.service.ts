@@ -33,39 +33,114 @@ export interface UserProfile {
   createdAt?: any;
 }
 
+function cleanFirestorePayload<T extends Record<string, any>>(obj: T): T {
+  const cleaned: any = {};
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] !== undefined) {
+      cleaned[key] = obj[key];
+    }
+  });
+  return cleaned as T;
+}
+
 export const authService = {
   async login(email: string, password: string): Promise<UserProfile> {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       let profile = await this.getUserProfile(userCredential.user.uid);
-      if (!profile) {
-        const isVendorEmail = email.toLowerCase().includes('vendor') || email.toLowerCase().includes('vikram');
-        const isEmp = email.toLowerCase().includes('emp') || email.toLowerCase().includes('staff');
-        profile = {
-          uid: userCredential.user.uid,
-          email: userCredential.user.email || email,
-          name: isEmp ? 'Amit Kumar (Vendor Staff)' : (isVendorEmail ? 'Vikram Solar Admin' : (userCredential.user.displayName || email.split('@')[0])),
-          companyName: isVendorEmail || isEmp ? 'Vikram Solar' : 'Meta Green Global HQ',
-          role: isEmp ? 'Vendor Employee' : (isVendorEmail ? 'Vendor' : 'Super Admin'),
-          status: 'Active',
-          mustChangePassword: isEmp,
-          isFirstLogin: isEmp,
-          createdAt: serverTimestamp()
-        };
-        await setDoc(doc(db, 'users', profile.uid), profile);
+      const lowerEmail = email.toLowerCase();
+      const isVendor = lowerEmail.includes('vendor') || lowerEmail.includes('vikram');
+      const isInstaller = lowerEmail.includes('installer') || lowerEmail.includes('technician');
+      const isSales = lowerEmail.includes('sales');
+      const isFinance = lowerEmail.includes('finance');
+      const isCustomer = lowerEmail.includes('customer');
+      const isEmp = lowerEmail.includes('emp') || lowerEmail.includes('staff');
+
+      let expectedRole: UserRole | null = null;
+      if (isEmp) expectedRole = 'Vendor Employee';
+      else if (isVendor) expectedRole = 'Vendor';
+      else if (isInstaller) expectedRole = 'Installer';
+      else if (isSales) expectedRole = 'Sales Executive';
+      else if (isFinance) expectedRole = 'Finance Manager';
+      else if (isCustomer) expectedRole = 'Customer';
+
+      if (profile) {
+        // Enforce role consistency if email specifies persona (e.g. installer@solar.com)
+        if (expectedRole && profile.role !== expectedRole) {
+          profile.role = expectedRole;
+          if (expectedRole === 'Installer') {
+            profile.name = profile.name || 'Rohan Sharma (Lead Field Installer)';
+          }
+          await updateDoc(doc(db, 'users', profile.uid), { role: expectedRole, name: profile.name });
+        }
+        return profile;
       }
+
+      let assignedRole: UserRole = expectedRole || 'Super Admin';
+      let assignedName = userCredential.user.displayName || email.split('@')[0];
+
+      if (isEmp) {
+        assignedName = 'Amit Kumar (Vendor Staff)';
+      } else if (isVendor) {
+        assignedName = 'Vikram Solar Admin';
+      } else if (isInstaller) {
+        assignedName = 'Rohan Sharma (Lead Field Installer)';
+      } else if (isSales) {
+        assignedName = 'Priya Sharma (Sales Lead)';
+      } else if (isFinance) {
+        assignedName = 'Suresh Menon (Finance Lead)';
+      } else if (isCustomer) {
+        assignedName = 'Satya Kumar (Homeowner)';
+      }
+
+      profile = {
+        uid: userCredential.user.uid,
+        email: userCredential.user.email || email,
+        name: assignedName,
+        companyName: isVendor || isEmp ? 'Vikram Solar' : 'Meta Green Global HQ',
+        role: assignedRole,
+        status: 'Active',
+        mustChangePassword: isEmp,
+        isFirstLogin: isEmp,
+        createdAt: serverTimestamp()
+      };
+      await setDoc(doc(db, 'users', profile.uid), cleanFirestorePayload(profile));
       return profile;
     } catch (error: any) {
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') {
-        const isVendor = email.toLowerCase().includes('vendor') || email.toLowerCase().includes('vikram');
-        const isEmp = email.toLowerCase().includes('emp') || email.toLowerCase().includes('staff');
+        const lowerEmail = email.toLowerCase();
+        const isVendor = lowerEmail.includes('vendor') || lowerEmail.includes('vikram');
+        const isInstaller = lowerEmail.includes('installer') || lowerEmail.includes('technician');
+        const isSales = lowerEmail.includes('sales');
+        const isFinance = lowerEmail.includes('finance');
+        const isCustomer = lowerEmail.includes('customer');
+        const isEmp = lowerEmail.includes('emp') || lowerEmail.includes('staff');
+
+        let assignedRole: UserRole = 'Super Admin';
+        let assignedName = 'Global Super Admin';
+
+        if (isEmp) {
+          assignedRole = 'Vendor Employee';
+          assignedName = 'Amit Kumar (Vendor Staff)';
+        } else if (isVendor) {
+          assignedRole = 'Vendor';
+          assignedName = 'Vikram Solar Admin';
+        } else if (isInstaller) {
+          assignedRole = 'Installer';
+          assignedName = 'Rohan Sharma (Lead Field Installer)';
+        } else if (isSales) {
+          assignedRole = 'Sales Executive';
+          assignedName = 'Priya Sharma (Sales Lead)';
+        } else if (isFinance) {
+          assignedRole = 'Finance Manager';
+          assignedName = 'Suresh Menon (Finance Lead)';
+        } else if (isCustomer) {
+          assignedRole = 'Customer';
+          assignedName = 'Satya Kumar (Homeowner)';
+        }
+
         try {
-          return await this.register(
-            email, 
-            password, 
-            isEmp ? 'Amit Kumar (Vendor Staff)' : (isVendor ? 'Vikram Solar Admin' : 'Global Super Admin'), 
-            isEmp ? 'Vendor Employee' : (isVendor ? 'Vendor' : 'Super Admin')
-          );
+          return await this.register(email, password, assignedName, assignedRole);
         } catch (registerError: any) {
           if (registerError.code === 'auth/email-already-in-use') {
             throw new Error('Invalid password for existing account.');
@@ -78,17 +153,23 @@ export const authService = {
   },
 
   // Bulletproof Quick Demo Logins with multi-password fallback
-  async loginDemoUser(targetRole: 'admin' | 'vendor' | 'vendor-employee'): Promise<UserProfile> {
-    let demoEmail = 'admin@metagreen.com';
-    let demoPasses = ['demo1234', 'Admin123!', 'Password123!'];
+  async loginDemoUser(targetRole: 'admin' | 'vendor' | 'installer' | 'vendor-employee'): Promise<UserProfile> {
+    let demoEmail = 'admin@solar.com';
+    let demoPasses = ['admin123', 'demo1234', 'Admin123!', 'Password123!'];
     let expectedRole: UserRole = 'Super Admin';
     let demoName = 'Global Super Admin';
     let demoCompany = 'Meta Green Global HQ';
     let mustChange = false;
 
-    if (targetRole === 'vendor') {
+    if (targetRole === 'installer') {
+      demoEmail = 'installer@solar.com';
+      demoPasses = ['installer123', 'demo1234', 'Installer123!', 'Password123!'];
+      expectedRole = 'Installer';
+      demoName = 'Rohan Sharma (Lead Field Installer)';
+      demoCompany = 'Meta Green Solar Operations';
+    } else if (targetRole === 'vendor') {
       demoEmail = 'vendor@vikramsolar.com';
-      demoPasses = ['demo1234', 'Vendor123!', 'Password123!'];
+      demoPasses = ['vendor123', 'demo1234', 'Vendor123!', 'Password123!'];
       expectedRole = 'Vendor';
       demoName = 'Vikram Solar Admin';
       demoCompany = 'Vikram Solar';
@@ -119,7 +200,7 @@ export const authService = {
             isFirstLogin: mustChange,
             createdAt: serverTimestamp()
           };
-          await setDoc(doc(db, 'users', profile.uid), profile);
+          await setDoc(doc(db, 'users', profile.uid), cleanFirestorePayload(profile));
         }
         return profile;
       } catch (err: any) {
@@ -154,21 +235,28 @@ export const authService = {
     companyLogo?: string
   ): Promise<UserProfile> {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const profile: UserProfile = {
+    const rawProfile: UserProfile = {
       uid: userCredential.user.uid,
       email,
       name,
       companyName: companyName || (role === 'Vendor' || role === 'Vendor Employee' ? 'Vikram Solar' : 'Meta Green Global HQ'),
-      companyLogo,
       role,
       status: 'Active',
       mustChangePassword,
       isFirstLogin: mustChangePassword,
-      tempPassword: mustChangePassword ? password : undefined,
       createdAt: serverTimestamp()
     };
-    await setDoc(doc(db, 'users', profile.uid), profile);
-    return profile;
+
+    if (companyLogo) {
+      rawProfile.companyLogo = companyLogo;
+    }
+    if (mustChangePassword) {
+      rawProfile.tempPassword = password;
+    }
+
+    const payload = cleanFirestorePayload(rawProfile);
+    await setDoc(doc(db, 'users', payload.uid), payload);
+    return rawProfile;
   },
 
   async updateUserPassword(newPassword: string): Promise<void> {
@@ -181,13 +269,20 @@ export const authService = {
     const docRef = doc(db, 'users', auth.currentUser.uid);
     await updateDoc(docRef, {
       mustChangePassword: false,
-      isFirstLogin: false,
-      tempPassword: null
+      isFirstLogin: false
     });
   },
 
   async logout(): Promise<void> {
-    await signOut(auth);
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout error:", err);
+      localStorage.clear();
+      sessionStorage.clear();
+    }
   },
 
   async getUserProfile(uid: string): Promise<UserProfile | null> {

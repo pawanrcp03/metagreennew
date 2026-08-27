@@ -20,17 +20,19 @@ import { db } from '@/src/lib/firebase';
 import { storageService } from '@/src/services/storage.service';
 import { format } from 'date-fns';
 
-type DocCategory = 'KYC' | 'Electricity Bill' | 'Survey Report' | 'Agreement' | 'Warranty' | 'Net Meter Approval' | 'Installation Photos' | 'Invoices';
+type DocCategory = 'KYC / Customer Docs (Aadhaar, Passbook)' | 'Electricity Bill' | 'Site Photos (Before / After)' | 'Subsidy Docs' | 'DCR Certificate' | 'Survey Report' | 'Agreement' | 'Warranty' | 'Net Meter Approval' | 'Invoices';
 
 const CATEGORIES: { id: DocCategory, label: string, icon: any, required: boolean }[] = [
-  { id: 'KYC', label: 'KYC Documents', icon: User, required: true },
+  { id: 'KYC / Customer Docs (Aadhaar, Passbook)', label: 'Customer Docs (Aadhaar, Bill, Passbook)', icon: User, required: true },
   { id: 'Electricity Bill', label: 'Electricity Bill', icon: FileText, required: true },
+  { id: 'Site Photos (Before / After)', label: 'Site Photos (Before / After)', icon: ImageIcon, required: true },
+  { id: 'Subsidy Docs', label: 'Subsidy Application Docs', icon: FileCheck, required: true },
+  { id: 'DCR Certificate', label: 'DCR Solar Panel Certificate', icon: FileCheck, required: true },
   { id: 'Survey Report', label: 'Site Survey Report', icon: Building, required: true },
   { id: 'Agreement', label: 'Customer Agreement', icon: FileCheck, required: true },
   { id: 'Net Meter Approval', label: 'Net Metering Approval', icon: FileCheck, required: true },
   { id: 'Invoices', label: 'Invoices & Receipts', icon: FileText, required: false },
   { id: 'Warranty', label: 'Warranty Certificates', icon: FileCheck, required: false },
-  { id: 'Installation Photos', label: 'Installation Photos', icon: ImageIcon, required: false },
 ];
 
 interface AppDocument {

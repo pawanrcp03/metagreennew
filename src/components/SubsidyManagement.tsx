@@ -8,30 +8,173 @@ import {
   Search,
   IndianRupee,
   Building,
-  FileText, Edit2, Trash2
+  FileText, 
+  Edit2, 
+  Trash2,
+  ArrowRight,
+  Sparkles,
+  Zap,
+  ShieldCheck,
+  Award,
+  Layers,
+  ChevronRight,
+  Filter,
+  Check
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { collection, query, onSnapshot, orderBy, addDoc, serverTimestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
+import { useToast } from '@/src/context/ToastContext';
+
+// 6 Official PM Surya Ghar Subsidy Pipeline Stages
+export const SUBSIDY_STAGES = [
+  { id: 0, key: 'installation', name: 'Installation Completed', statusLabel: 'Ready for Subsidy', progress: 15, badgeBg: 'bg-amber-500/10 text-amber-600 border-amber-300' },
+  { id: 1, key: 'submitted', name: 'PM Surya Ghar Portal Submitted', statusLabel: 'Application Submitted', progress: 35, badgeBg: 'bg-blue-500/10 text-blue-600 border-blue-300' },
+  { id: 2, key: 'discom', name: 'DISCOM NOC & Net Meter Sync', statusLabel: 'DISCOM NOC Pending', progress: 55, badgeBg: 'bg-indigo-500/10 text-indigo-600 border-indigo-300' },
+  { id: 3, key: 'bank', name: 'Bank Account NPCI Verified', statusLabel: 'Bank NPCI Validated', progress: 75, badgeBg: 'bg-purple-500/10 text-purple-600 border-purple-300' },
+  { id: 4, key: 'sanctioned', name: 'Central Nodal Agency Sanction', statusLabel: 'Sanction Approved', progress: 90, badgeBg: 'bg-teal-500/10 text-teal-600 border-teal-300' },
+  { id: 5, key: 'claimed', name: 'Subsidy Claimed & Disbursed 🎉', statusLabel: 'Claimed & Disbursed', progress: 100, badgeBg: 'bg-emerald-500/10 text-emerald-700 border-emerald-300' },
+];
 
 export default function SubsidyManagement() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'tracking' | 'schemes'>('tracking');
   const [searchQuery, setSearchQuery] = useState('');
+  const [stageFilter, setStageFilter] = useState<string>('all');
 
-  const [applications, setApplications] = useState<any[]>([]);
+  const [subsidiesList, setSubsidiesList] = useState<any[]>([]);
+  const [completedProjects, setCompletedProjects] = useState<any[]>([]);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAppId, setEditingAppId] = useState<string | null>(null);
-  const [newApp, setNewApp] = useState({ customer: '', scheme: 'PM Surya Ghar Muft Bijli Yojana', capacity: '', subsidyAmount: 0 });
+  const [newApp, setNewApp] = useState({ 
+    customer: '', 
+    scheme: 'PM Surya Ghar Muft Bijli Yojana', 
+    capacity: '3kW', 
+    subsidyAmount: 78000,
+    applicationRefNo: '',
+    discomConsumerNo: ''
+  });
 
+  // Calculate PM Surya Ghar Subsidy Amount based on kW
+  const calculateSubsidyAmount = (capacity: number | string): number => {
+    const kw = typeof capacity === 'string' ? parseFloat(capacity.replace(/[^0-9.]/g, '')) || 3 : capacity;
+    if (kw <= 1) return 30000;
+    if (kw <= 2) return 60000;
+    return 78000;
+  };
+
+  // Listen to Firestore Subsidies and Completed Projects in Real-Time
   useEffect(() => {
-    const q = query(collection(db, 'subsidies'), orderBy('appliedDate', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        setApplications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    // 1. Fetch Subsidies Collection
+    const subsidiesQuery = query(collection(db, 'subsidies'));
+    const unsubSubsidies = onSnapshot(subsidiesQuery, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSubsidiesList(items);
+    });
+
+    // 2. Fetch Projects Collection for Completed Installations
+    const projectsQuery = query(collection(db, 'projects'));
+    const unsubProjects = onSnapshot(projectsQuery, (snapshot) => {
+      const allProjects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Filter for installation completed projects
+      const finished = allProjects.filter((p: any) => 
+        p.status === 'Installation Complete' || 
+        p.status === 'Completed' || 
+        p.status === 'Verification' || 
+        p.status === 'Net Meter Installed' ||
+        p.status === 'Subsidy Pending' ||
+        p.status === 'Subsidy Released'
+      );
+      setCompletedProjects(finished);
+    });
+
+    return () => {
+      unsubSubsidies();
+      unsubProjects();
+    };
+  }, []);
+
+  // Merge projects completed in installation into the subsidies pipeline list
+  const mergedApplications = React.useMemo(() => {
+    const list: any[] = [...subsidiesList];
+
+    // For every project with completed installation, ensure it exists in subsidy pipeline
+    completedProjects.forEach(proj => {
+      const existing = list.find(s => s.projectId === proj.id || s.customer?.toLowerCase() === proj.customerName?.toLowerCase());
+      if (!existing) {
+        const capacityKw = proj.capacityKw || 3;
+        const autoAmount = calculateSubsidyAmount(capacityKw);
+        list.push({
+          id: `auto-${proj.id}`,
+          projectId: proj.id,
+          customer: proj.customerName || 'Customer',
+          phone: proj.phone || '',
+          address: proj.address || proj.city || '',
+          scheme: 'PM Surya Ghar Muft Bijli Yojana',
+          capacity: `${capacityKw}kW`,
+          subsidyAmount: autoAmount,
+          currentStage: 0,
+          status: 'Installation Completed',
+          appliedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'),
+          isAutoSynced: true,
+          applicationRefNo: `PMSG-2026-${proj.id.substring(0, 5).toUpperCase()}`
+        });
       }
     });
-    return () => unsubscribe();
-  }, []);
+
+    return list;
+  }, [subsidiesList, completedProjects]);
+
+  // Advance application to next stage in pipeline
+  const handleAdvanceStage = async (app: any, targetStageIndex?: number) => {
+    const nextStageIdx = targetStageIndex !== undefined 
+      ? targetStageIndex 
+      : Math.min((app.currentStage ?? 0) + 1, SUBSIDY_STAGES.length - 1);
+    
+    const stageObj = SUBSIDY_STAGES[nextStageIdx];
+    const isCompletedClaim = nextStageIdx === SUBSIDY_STAGES.length - 1;
+
+    try {
+      const targetDocId = app.id.startsWith('auto-') ? app.projectId : app.id;
+      const refDoc = doc(db, 'subsidies', targetDocId);
+
+      const updatedPayload = {
+        projectId: app.projectId || app.id,
+        customer: app.customer,
+        phone: app.phone || '',
+        scheme: app.scheme || 'PM Surya Ghar Muft Bijli Yojana',
+        capacity: app.capacity || '3kW',
+        subsidyAmount: app.subsidyAmount || calculateSubsidyAmount(app.capacity),
+        currentStage: nextStageIdx,
+        status: stageObj.statusLabel,
+        progress: stageObj.progress,
+        applicationRefNo: app.applicationRefNo || `PMSG-2026-${Math.floor(100000 + Math.random() * 900000)}`,
+        lastUpdated: serverTimestamp(),
+        claimedAt: isCompletedClaim ? new Date().toISOString() : app.claimedAt || null
+      };
+
+      await setDoc(refDoc, updatedPayload, { merge: true });
+
+      // If the target project exists in Firestore, update project status
+      if (app.projectId) {
+        const projRef = doc(db, 'projects', app.projectId);
+        await updateDoc(projRef, {
+          status: isCompletedClaim ? 'Completed' : 'Subsidy Pending',
+          subsidyStage: stageObj.name,
+          subsidyClaimed: isCompletedClaim
+        }).catch(() => {});
+      }
+
+      if (isCompletedClaim) {
+        toast.success(`🎉 Subsidy Application for ${app.customer} has been successfully CLAIMED & DISBURSED!`, 'Subsidy Disbursed');
+      } else {
+        toast.info(`Updated Subsidy Stage for ${app.customer} to: ${stageObj.name}`, 'Stage Advanced');
+      }
+    } catch (err) {
+      console.error('Error advancing subsidy stage:', err);
+    }
+  };
 
   const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,31 +184,29 @@ export default function SubsidyManagement() {
           customer: newApp.customer,
           scheme: newApp.scheme,
           capacity: newApp.capacity,
-          subsidyAmount: newApp.subsidyAmount,
+          subsidyAmount: newApp.subsidyAmount || calculateSubsidyAmount(newApp.capacity),
+          applicationRefNo: newApp.applicationRefNo,
+          discomConsumerNo: newApp.discomConsumerNo
         });
       } else {
-        const newId = `SUB-2026-${String(applications.length + 1).padStart(3, '0')}`;
+        const newId = `SUB-2026-${String(subsidiesList.length + 1).padStart(3, '0')}`;
         await addDoc(collection(db, 'subsidies'), {
           displayId: newId,
           customer: newApp.customer,
           scheme: newApp.scheme,
           capacity: newApp.capacity,
-          status: 'Application',
-          progress: 10,
+          subsidyAmount: newApp.subsidyAmount || calculateSubsidyAmount(newApp.capacity),
+          currentStage: 0,
+          status: 'Installation Completed',
+          progress: 15,
           appliedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'),
-          subsidyAmount: newApp.subsidyAmount,
-          steps: [
-            { name: 'Application', completed: true },
-            { name: 'Documents', completed: false, current: true },
-            { name: 'Verification', completed: false },
-            { name: 'Approval', completed: false },
-            { name: 'Amount Received', completed: false }
-          ]
+          applicationRefNo: newApp.applicationRefNo || `PMSG-2026-${Math.floor(100000 + Math.random() * 900000)}`,
+          discomConsumerNo: newApp.discomConsumerNo || ''
         });
       }
       setIsModalOpen(false);
       setEditingAppId(null);
-      setNewApp({ customer: '', scheme: 'PM Surya Ghar Muft Bijli Yojana', capacity: '', subsidyAmount: 0 });
+      setNewApp({ customer: '', scheme: 'PM Surya Ghar Muft Bijli Yojana', capacity: '3kW', subsidyAmount: 78000, applicationRefNo: '', discomConsumerNo: '' });
     } catch (err) {
       console.error('Error saving subsidy:', err);
     }
@@ -81,20 +222,33 @@ export default function SubsidyManagement() {
     }
   };
 
+  // Filtered Subsidies based on search query & stage filter
+  const filteredApplications = mergedApplications.filter(app => {
+    const matchesSearch = 
+      app.customer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      app.applicationRefNo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      app.displayId?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (stageFilter === 'all') return matchesSearch;
+    if (stageFilter === 'claimed') return matchesSearch && (app.currentStage === 5 || app.status === 'Claimed & Disbursed');
+    if (stageFilter === 'in_progress') return matchesSearch && app.currentStage > 0 && app.currentStage < 5;
+    if (stageFilter === 'new') return matchesSearch && (app.currentStage === 0 || !app.currentStage);
+    return matchesSearch;
+  });
 
   const centralSchemes = [
     {
       name: 'PM Surya Ghar Muft Bijli Yojana',
-      description: 'Central government scheme providing up to ₹78,000 for residential rooftop solar installations.',
-      eligibility: 'Residential consumers',
-      benefits: 'Up to ₹78,000 subsidy',
+      description: 'Central government scheme providing direct benefit transfer up to ₹78,000 for residential rooftop solar.',
+      eligibility: 'Residential households across India',
+      benefits: '1kW = ₹30k | 2kW = ₹60k | 3kW+ = ₹78k',
       link: 'https://pmsuryaghar.gov.in'
     },
     {
-      name: 'CFA for Grid Connected Rooftop Solar',
-      description: 'Phase-II program by MNRE for residential sector.',
+      name: 'CFA for Grid Connected Rooftop Solar Phase-II',
+      description: 'MNRE CFA assistance for residential rooftop installations.',
       eligibility: 'Residential (Individual/GHS/RWA)',
-      benefits: '40% up to 3kW, 20% beyond 3kW up to 10kW',
+      benefits: '40% subsidy up to 3kW, 20% beyond 3kW up to 10kW',
       link: 'https://solarrooftop.gov.in'
     }
   ];
@@ -102,44 +256,61 @@ export default function SubsidyManagement() {
   const stateSchemes = [
     {
       state: 'Andhra Pradesh',
-      name: 'AP State Solar Rooftop Policy',
-      description: 'Additional state subsidy for residential rooftop solar installations.',
-      eligibility: 'Residential consumers in AP',
-      benefits: '20% of system cost up to maximum of ₹20,000'
+      name: 'AP State Solar Rooftop Promotion',
+      description: 'Additional state DISCOM subsidy for residential rooftop solar installations.',
+      eligibility: 'Residential consumers in AP DISCOMs',
+      benefits: 'Up to ₹20,000 additional DISCOM assistance'
     },
     {
-      state: 'Gujarat',
-      name: 'Surya Gujarat Scheme',
-      description: 'State specific subsidy scheme for accelerating residential rooftop solar.',
-      eligibility: 'Residential consumers in Gujarat',
-      benefits: 'Additional ₹10,000 beyond central subsidy'
+      state: 'Telangana',
+      name: 'TSREDCO Rooftop Solar Incentive',
+      description: 'State promotion policy facilitating single window DISCOM NOC & subsidy disbursal.',
+      eligibility: 'Residential consumers in Telangana (TSSPDCL / TSNPDCL)',
+      benefits: 'Fast-track Net Metering & State Subsidy Release'
     }
   ];
 
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+      {/* Header */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            <Landmark className="w-8 h-8 text-emerald-600" /> Subsidy Management
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-black uppercase tracking-wider mb-2 border border-emerald-200">
+            <Sparkles className="w-3.5 h-3.5 fill-emerald-600" /> PM Surya Ghar Subsidy Engine
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+            <Landmark className="w-8 h-8 text-emerald-600" /> Subsidy & Claim Tracking
           </h1>
-          <p className="text-slate-500 font-medium mt-1">Track applications and manage government schemes</p>
+          <p className="text-slate-500 font-semibold text-xs sm:text-sm mt-1">
+            Auto-synced from Completed Installations to Central Bank Disbursement (DBT ₹30,000 - ₹78,000)
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsModalOpen(true)} 
+            className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-2"
+          >
+            <Sparkles className="w-4 h-4" />
+            + Manual Subsidy Application
+          </button>
         </div>
       </header>
 
-      <div className="flex overflow-x-auto pb-4 gap-2 no-scrollbar border-b border-slate-100">
+      {/* Tabs */}
+      <div className="flex overflow-x-auto pb-2 gap-2 no-scrollbar border-b border-slate-200">
         {[
-          { id: 'tracking', label: 'Application Tracking', icon: FileCheck },
-          { id: 'schemes', label: 'Available Schemes', icon: Building },
+          { id: 'tracking', label: `Application Tracking (${filteredApplications.length})`, icon: FileCheck },
+          { id: 'schemes', label: 'Available Schemes & Policies', icon: Building },
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
             className={cn(
-              "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all whitespace-nowrap",
+              "flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all whitespace-nowrap cursor-pointer",
               activeTab === tab.id 
-                ? "bg-emerald-100/80 text-emerald-800" 
-                : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-200"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20" 
+                : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
             )}
           >
             <tab.icon className="w-4 h-4" />
@@ -148,170 +319,279 @@ export default function SubsidyManagement() {
         ))}
       </div>
 
+      {/* TRACKING TAB CONTENT */}
       {activeTab === 'tracking' && (
         <div className="space-y-6">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="relative w-96">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Search by customer name or ID..."
+                placeholder="Search customer name or PMSG Ref No..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 outline-none"
               />
             </div>
-            <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2 text-sm shadow-sm shadow-emerald-200">
-              New Application
-            </button>
+
+            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+              <span className="text-xs font-bold text-slate-500 flex items-center gap-1 shrink-0">
+                <Filter className="w-3.5 h-3.5" /> Stage:
+              </span>
+              {[
+                { id: 'all', label: 'All Projects' },
+                { id: 'new', label: 'Ready (Installation Done)' },
+                { id: 'in_progress', label: 'In Verification' },
+                { id: 'claimed', label: 'Claimed & Disbursed 🎉' }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setStageFilter(f.id)}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all cursor-pointer whitespace-nowrap ${
+                    stageFilter === f.id
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            {applications.map(app => (
-              <div key={app.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900">{app.customer}</h3>
-                    <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
-                      <span className="font-medium text-slate-700">{app.displayId || app.id}</span>
-                      <span>•</span>
-                      <span>{app.scheme}</span>
-                      <span>•</span>
-                      <span>{app.capacity}</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center justify-end gap-2 mb-2">
-                        <button 
-                          onClick={() => {
-                            setEditingAppId(app.id);
-                            setNewApp({ customer: app.customer, scheme: app.scheme, capacity: app.capacity, subsidyAmount: app.subsidyAmount });
-                            setIsModalOpen(true);
-                          }}
-                          className="p-1.5 hover:bg-blue-50 text-blue-400 hover:text-blue-600 rounded-lg transition-colors"
-                          title="Edit Application"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteApplication(app.id)}
-                          className="p-1.5 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors"
-                          title="Delete Application"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                    </div>
-                    <div className="text-sm text-slate-500 font-medium mb-1">Expected Subsidy</div>
-                    <div className="text-xl font-bold text-emerald-600 flex items-center justify-end gap-1">
-                      <IndianRupee className="w-5 h-5" /> {app.subsidyAmount.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
+          {/* Applications & Sync Cards List */}
+          <div className="grid grid-cols-1 gap-6">
+            {filteredApplications.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center space-y-3">
+                <Landmark className="w-12 h-12 text-slate-300 mx-auto" />
+                <h3 className="text-lg font-black text-slate-800">No Subsidy Applications Found</h3>
+                <p className="text-xs font-semibold text-slate-500 max-w-md mx-auto">
+                  Projects automatically appear here when their status is set to <strong>Installation Complete</strong> in the Projects & Tasks module.
+                </p>
+              </div>
+            ) : (
+              filteredApplications.map(app => {
+                const currentStageIdx = app.currentStage ?? 0;
+                const activeStageObj = SUBSIDY_STAGES[currentStageIdx] || SUBSIDY_STAGES[0];
+                const isClaimed = currentStageIdx === SUBSIDY_STAGES.length - 1;
 
-                <div className="relative">
-                  {/* Progress Bar Background */}
-                  <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -translate-y-1/2 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-500 transition-all duration-1000" 
-                      style={{ width: `${app.progress}%` }}
-                    />
-                  </div>
+                return (
+                  <div 
+                    key={app.id} 
+                    className={cn(
+                      "bg-white border rounded-3xl p-6 shadow-sm transition-all duration-200 hover:shadow-md space-y-6 relative overflow-hidden",
+                      isClaimed ? "border-emerald-300 ring-2 ring-emerald-500/10" : "border-slate-200"
+                    )}
+                  >
+                    {/* Top Info Header */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-base font-black text-slate-900">{app.customer}</span>
+                          {app.isAutoSynced && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full border border-emerald-200 uppercase tracking-widest flex items-center gap-1">
+                              <Zap className="w-3 h-3 text-emerald-600 fill-emerald-600" /> Auto-Synced from Installation
+                            </span>
+                          )}
+                          <span className={cn("px-2.5 py-0.5 text-[10px] font-black rounded-full border uppercase tracking-wider", activeStageObj.badgeBg)}>
+                            {activeStageObj.statusLabel}
+                          </span>
+                        </div>
 
-                  {/* Steps */}
-                  <div className="relative flex justify-between">
-                    {app.steps.map((step, idx) => (
-                      <div key={idx} className="flex flex-col items-center">
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white z-10 transition-colors",
-                          step.completed 
-                            ? "border-emerald-500 bg-emerald-500 text-white" 
-                            : step.current 
-                              ? "border-emerald-500 text-emerald-600" 
-                              : "border-slate-200 text-slate-300"
-                        )}>
-                          {step.completed ? (
-                            <CheckCircle2 className="w-5 h-5" />
-                          ) : step.current ? (
-                            <Clock className="w-4 h-4 animate-spin-slow" />
-                          ) : (
-                            <div className="w-2 h-2 rounded-full bg-slate-200" />
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-semibold">
+                          <span className="font-mono font-bold text-slate-700">Ref: {app.applicationRefNo || app.id}</span>
+                          <span>•</span>
+                          <span>{app.scheme}</span>
+                          <span>•</span>
+                          <span className="font-bold text-emerald-700">System: {app.capacity}</span>
+                          {app.address && (
+                            <>
+                              <span>•</span>
+                              <span>📍 {app.address}</span>
+                            </>
                           )}
                         </div>
-                        <div className={cn(
-                          "text-xs font-bold mt-2 text-center w-24",
-                          step.completed || step.current ? "text-slate-900" : "text-slate-400"
-                        )}>
-                          {step.name}
+                      </div>
+
+                      {/* Right Amount & Advance CTA */}
+                      <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto">
+                        <div className="text-right">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">PM Surya Ghar Subsidy Entitlement</span>
+                          <p className="text-2xl font-black text-emerald-600 flex items-center justify-end gap-0.5">
+                            ₹{(app.subsidyAmount || calculateSubsidyAmount(app.capacity)).toLocaleString()}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {!isClaimed && (
+                            <button
+                              onClick={() => handleAdvanceStage(app)}
+                              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
+                              title="Advance application to the next milestone stage"
+                            >
+                              Advance Stage ({SUBSIDY_STAGES[currentStageIdx + 1]?.name || 'Next'})
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          <button 
+                            onClick={() => {
+                              setEditingAppId(app.id);
+                              setNewApp({ 
+                                customer: app.customer, 
+                                scheme: app.scheme, 
+                                capacity: app.capacity, 
+                                subsidyAmount: app.subsidyAmount || calculateSubsidyAmount(app.capacity),
+                                applicationRefNo: app.applicationRefNo || '',
+                                discomConsumerNo: app.discomConsumerNo || ''
+                              });
+                              setIsModalOpen(true);
+                            }}
+                            className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-xl transition-colors"
+                            title="Edit Details"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+
+                          <button 
+                            onClick={() => handleDeleteApplication(app.id)}
+                            className="p-2 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-xl transition-colors"
+                            title="Delete Record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                    ))}
+                    </div>
+
+                    {/* 6-Stage Tracking Stepper Bar */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex justify-between items-center text-xs font-black text-slate-700">
+                        <span>PM Surya Ghar Subsidy Claim Pipeline</span>
+                        <span className="text-emerald-700 font-mono font-bold">{activeStageObj.progress}% Complete</span>
+                      </div>
+
+                      {/* Progress Track */}
+                      <div className="relative">
+                        <div className="absolute top-1/2 left-0 w-full h-2 bg-slate-100 -translate-y-1/2 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 transition-all duration-700" 
+                            style={{ width: `${activeStageObj.progress}%` }}
+                          />
+                        </div>
+
+                        {/* Interactive Stage Nodes */}
+                        <div className="relative flex justify-between items-center">
+                          {SUBSIDY_STAGES.map((stage, idx) => {
+                            const isPast = idx < currentStageIdx;
+                            const isCurrent = idx === currentStageIdx;
+                            const isFuture = idx > currentStageIdx;
+
+                            return (
+                              <button
+                                key={stage.id}
+                                onClick={() => handleAdvanceStage(app, idx)}
+                                className="group flex flex-col items-center cursor-pointer focus:outline-none"
+                                title={`Set status to ${stage.name}`}
+                              >
+                                <div className={cn(
+                                  "w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all shadow-xs z-10",
+                                  isPast || isCurrent
+                                    ? "bg-emerald-600 border-emerald-600 text-white font-bold scale-105" 
+                                    : "bg-white border-slate-300 text-slate-400 group-hover:border-emerald-400"
+                                )}>
+                                  {isPast ? (
+                                    <Check className="w-5 h-5 stroke-[3]" />
+                                  ) : isCurrent ? (
+                                    <Clock className="w-4 h-4 animate-spin-slow" />
+                                  ) : (
+                                    <span className="text-xs font-black">{idx + 1}</span>
+                                  )}
+                                </div>
+
+                                <span className={cn(
+                                  "text-[10px] font-black mt-2 text-center max-w-[90px] leading-tight hidden sm:block",
+                                  isCurrent ? "text-emerald-700 font-black" : isPast ? "text-slate-800" : "text-slate-400"
+                                )}>
+                                  {stage.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Claim Success Banner */}
+                    {isClaimed && (
+                      <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-bold text-emerald-800 animate-in zoom-in-95">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                          <span>🎉 Subsidy of ₹{(app.subsidyAmount || calculateSubsidyAmount(app.capacity)).toLocaleString()} successfully credited directly to customer's linked Aadhaar NPCI bank account via DBT!</span>
+                        </div>
+                        <span className="text-[10px] uppercase tracking-wider font-mono bg-emerald-600 text-white px-2.5 py-1 rounded-lg shrink-0">
+                          Disbursed Status Verified ✓
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </div>
-                
-                {app.status === 'Documents' && (
-                   <div className="mt-6 p-4 bg-amber-50 border border-amber-100 rounded-lg flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                         <FileText className="w-5 h-5 text-amber-600" />
-                         <span className="text-sm font-medium text-amber-800">Missing Documents: Electricity Bill, Cancelled Cheque</span>
-                      </div>
-                      <div>
-                        <input type="file" id={`upload-${app.id}`} className="hidden" onChange={() => alert('Documents uploaded successfully.')} />
-                        <label htmlFor={`upload-${app.id}`} className="cursor-pointer px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-md hover:bg-amber-700">Upload Now</label>
-                      </div>
-                   </div>
-                )}
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         </div>
       )}
 
+      {/* SCHEMES TAB CONTENT */}
       {activeTab === 'schemes' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-6">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Building className="w-6 h-6 text-blue-600" /> Central Schemes
+            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+              <Building className="w-6 h-6 text-emerald-600" /> Central PM Surya Ghar Schemes
             </h2>
             {centralSchemes.map((scheme, idx) => (
-              <div key={idx} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <h3 className="text-lg font-bold text-slate-900 mb-2">{scheme.name}</h3>
-                <p className="text-sm text-slate-600 mb-4">{scheme.description}</p>
-                <div className="space-y-2 text-sm">
+              <div key={idx} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow space-y-4">
+                <h3 className="text-lg font-black text-slate-900">{scheme.name}</h3>
+                <p className="text-xs text-slate-600 font-semibold leading-relaxed">{scheme.description}</p>
+                <div className="space-y-2 text-xs">
                   <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 font-medium">Eligibility</span>
-                    <span className="font-bold text-slate-800">{scheme.eligibility}</span>
+                    <span className="text-slate-500 font-semibold">Target Eligibility</span>
+                    <span className="font-bold text-slate-900">{scheme.eligibility}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 font-medium">Benefits</span>
-                    <span className="font-bold text-emerald-600">{scheme.benefits}</span>
+                    <span className="text-slate-500 font-semibold">Subsidy Entitlement</span>
+                    <span className="font-black text-emerald-600">{scheme.benefits}</span>
                   </div>
                 </div>
-                <div className="mt-4 text-right">
-                  <a href={scheme.link} target="_blank" rel="noreferrer" className="text-blue-600 text-sm font-bold hover:underline">Official Portal &rarr;</a>
+                <div className="text-right pt-2">
+                  <a href={scheme.link} target="_blank" rel="noreferrer" className="text-emerald-600 text-xs font-black hover:underline flex items-center justify-end gap-1">
+                    Official Central Portal &rarr;
+                  </a>
                 </div>
               </div>
             ))}
           </div>
 
           <div className="space-y-6">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Landmark className="w-6 h-6 text-amber-600" /> State Schemes
+            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+              <Landmark className="w-6 h-6 text-teal-600" /> State DISCOM Guidelines
             </h2>
             {stateSchemes.map((scheme, idx) => (
-              <div key={idx} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div className="inline-block px-2 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-md mb-3">
+              <div key={idx} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow space-y-4">
+                <div className="inline-block px-3 py-1 bg-teal-100 text-teal-800 text-[10px] font-black uppercase tracking-wider rounded-full">
                   {scheme.state}
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-2">{scheme.name}</h3>
-                <p className="text-sm text-slate-600 mb-4">{scheme.description}</p>
-                <div className="space-y-2 text-sm">
+                <h3 className="text-lg font-black text-slate-900">{scheme.name}</h3>
+                <p className="text-xs text-slate-600 font-semibold leading-relaxed">{scheme.description}</p>
+                <div className="space-y-2 text-xs">
                   <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 font-medium">Eligibility</span>
-                    <span className="font-bold text-slate-800">{scheme.eligibility}</span>
+                    <span className="text-slate-500 font-semibold">DISCOM Eligibility</span>
+                    <span className="font-bold text-slate-900">{scheme.eligibility}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 font-medium">Benefits</span>
-                    <span className="font-bold text-emerald-600">{scheme.benefits}</span>
+                    <span className="text-slate-500 font-semibold">State Benefits</span>
+                    <span className="font-black text-emerald-600">{scheme.benefits}</span>
                   </div>
                 </div>
               </div>
@@ -320,38 +600,53 @@ export default function SubsidyManagement() {
         </div>
       )}
       
+      {/* MANUAL ADD / EDIT MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-slate-900">{editingAppId ? 'Edit Application' : 'New Subsidy Application'}</h3>
-              <button onClick={() => {setIsModalOpen(false); setEditingAppId(null); setNewApp({ customer: '', scheme: 'PM Surya Ghar Muft Bijli Yojana', capacity: '', subsidyAmount: 0 });}} className="text-slate-400 hover:text-slate-600">&times;</button>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+              <div>
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">PM Surya Ghar Engine</span>
+                <h3 className="text-xl font-black">{editingAppId ? 'Edit Subsidy Record' : 'New Subsidy Application'}</h3>
+              </div>
+              <button onClick={() => {setIsModalOpen(false); setEditingAppId(null);}} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors">&times;</button>
             </div>
-            <form onSubmit={handleSubmitApplication} className="p-6 space-y-4">
+
+            <form onSubmit={handleSubmitApplication} className="p-6 space-y-4 font-sans text-xs">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
-                <input required type="text" value={newApp.customer} onChange={e => setNewApp({...newApp, customer: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Customer Full Name *</label>
+                <input required type="text" value={newApp.customer} onChange={e => setNewApp({...newApp, customer: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Ramesh Kumar" />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Scheme</label>
-                <select value={newApp.scheme} onChange={e => setNewApp({...newApp, scheme: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none">
-                  {centralSchemes.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                  {stateSchemes.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                </select>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Application Ref No (PM Surya Ghar)</label>
+                <input type="text" value={newApp.applicationRefNo} onChange={e => setNewApp({...newApp, applicationRefNo: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-mono font-bold text-emerald-600 outline-none focus:border-emerald-500" placeholder="e.g. PMSG-2026-987654" />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Capacity</label>
-                  <input required type="text" placeholder="e.g. 5kW" value={newApp.capacity} onChange={e => setNewApp({...newApp, capacity: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">System Capacity (kW) *</label>
+                  <input required type="text" placeholder="e.g. 3kW" value={newApp.capacity} onChange={e => {
+                    const cap = e.target.value;
+                    const autoAmount = calculateSubsidyAmount(cap);
+                    setNewApp({...newApp, capacity: cap, subsidyAmount: autoAmount});
+                  }} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Expected Subsidy (₹)</label>
-                  <input required type="number" min="0" value={newApp.subsidyAmount || ''} onChange={e => setNewApp({...newApp, subsidyAmount: Number(e.target.value)})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Expected Subsidy (₹) *</label>
+                  <input required type="number" min="0" value={newApp.subsidyAmount || ''} onChange={e => setNewApp({...newApp, subsidyAmount: Number(e.target.value)})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-emerald-600 outline-none focus:border-emerald-500" />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">DISCOM Consumer Service No.</label>
+                <input type="text" value={newApp.discomConsumerNo} onChange={e => setNewApp({...newApp, discomConsumerNo: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-medium outline-none focus:border-emerald-500" placeholder="e.g. 1029384756" />
+              </div>
+
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => {setIsModalOpen(false); setNewApp({ customer: '', scheme: 'PM Surya Ghar Muft Bijli Yojana', capacity: '', subsidyAmount: 0 }); setEditingAppId(null);}} className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors">Create Application</button>
+                <button type="button" onClick={() => {setIsModalOpen(false); setEditingAppId(null);}} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-black text-xs rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
+                <button type="submit" className="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-black text-xs rounded-xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-600/20">Save Record</button>
               </div>
             </form>
           </div>
@@ -360,3 +655,4 @@ export default function SubsidyManagement() {
     </div>
   );
 }
+

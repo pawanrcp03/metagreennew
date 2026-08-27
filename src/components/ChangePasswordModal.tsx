@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, KeyRound, CheckCircle2, AlertCircle, X, ShieldCheck } from 'lucide-react';
 import { authService } from '../services/auth.service';
+import { useToast } from '../context/ToastContext';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export default function ChangePasswordModal({
   onClose,
   onSuccess
 }: ChangePasswordModalProps) {
+  const { toast } = useToast();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,12 +30,16 @@ export default function ChangePasswordModal({
     setError('');
 
     if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters long.');
+      const msg = 'New password must be at least 6 characters long.';
+      setError(msg);
+      toast.warning(msg, 'Password Requirement');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('New password and confirm password do not match.');
+      const msg = 'New password and confirm password do not match.';
+      setError(msg);
+      toast.error(msg, 'Password Mismatch');
       return;
     }
 
@@ -42,13 +48,16 @@ export default function ChangePasswordModal({
     try {
       await authService.updateUserPassword(newPassword);
       setSuccess(true);
+      toast.success('Account password updated successfully!', 'Security Updated');
       setTimeout(() => {
         onSuccess();
         onClose();
       }, 1500);
     } catch (err: any) {
       console.error('Password change error:', err);
-      setError(err.message || 'Failed to update password. Please try again.');
+      const msg = err.message || 'Failed to update password. Please try again.';
+      setError(msg);
+      toast.error(msg, 'Password Update Failed');
     } finally {
       setLoading(false);
     }

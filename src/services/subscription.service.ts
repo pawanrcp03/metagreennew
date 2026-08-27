@@ -249,23 +249,26 @@ export const subscriptionService = {
     await setDoc(doc(db, 'vendorAccounts', vendorData.uid), vendorAccount);
 
     // Also update User profile document with vendor sub details
-    await setDoc(doc(db, 'users', vendorData.uid), {
+    const userPayload: Record<string, any> = {
       uid: vendorData.uid,
       email: vendorData.email,
-      name: vendorData.contactPerson,
-      companyName: vendorData.companyName,
-      companyLogo: vendorData.companyLogo,
-      doorNo: vendorData.doorNo,
-      companyAddress: vendorData.companyAddress,
-      city: vendorData.city,
-      state: vendorData.state,
-      pincode: vendorData.pincode,
-      gstin: vendorData.gstin,
-      latitude: vendorData.latitude,
-      longitude: vendorData.longitude,
+      name: vendorData.contactPerson || '',
+      companyName: vendorData.companyName || '',
       role: 'Vendor',
       vendorAccount
-    }, { merge: true });
+    };
+
+    if (vendorData.companyLogo) userPayload.companyLogo = vendorData.companyLogo;
+    if (vendorData.doorNo) userPayload.doorNo = vendorData.doorNo;
+    if (vendorData.companyAddress) userPayload.companyAddress = vendorData.companyAddress;
+    if (vendorData.city) userPayload.city = vendorData.city;
+    if (vendorData.state) userPayload.state = vendorData.state;
+    if (vendorData.pincode) userPayload.pincode = vendorData.pincode;
+    if (vendorData.gstin) userPayload.gstin = vendorData.gstin;
+    if (vendorData.latitude) userPayload.latitude = vendorData.latitude;
+    if (vendorData.longitude) userPayload.longitude = vendorData.longitude;
+
+    await setDoc(doc(db, 'users', vendorData.uid), userPayload, { merge: true });
 
     return vendorAccount;
   },

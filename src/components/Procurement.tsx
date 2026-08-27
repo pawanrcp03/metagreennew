@@ -18,6 +18,7 @@ import { cn } from '@/src/lib/utils';
 import { collection, query, onSnapshot, orderBy, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, getDocs, where } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useAuth } from '@/src/context/AuthContext';
+import { useToast } from '@/src/context/ToastContext';
 
 export type ProductType = 'Panel' | 'Inverter' | 'AC/DC Cable' | 'Battery' | 'Structure' | 'Accessories';
 
@@ -32,6 +33,7 @@ export interface POItemRow {
 
 export default function Procurement() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'purchase' | 'vendors'>('purchase');
   const [searchQuery, setSearchQuery] = useState('');
   const [vendorFilter, setVendorFilter] = useState<string>('ALL');
@@ -170,11 +172,11 @@ export default function Procurement() {
   const handleSubmitPo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVendorName) {
-      alert("Please select a vendor.");
+      toast.warning("Please select a vendor for this PO.", "Vendor Required");
       return;
     }
     if (poItems.length === 0) {
-      alert("Please add at least one item row.");
+      toast.warning("Please add at least one item row to the PO.", "Items Required");
       return;
     }
 
@@ -191,6 +193,7 @@ export default function Procurement() {
           amount: poGrandTotal,
           createdBy: user?.email || 'admin'
         });
+        toast.success(`Purchase Order updated for ${selectedVendorName}!`, 'PO Updated');
       } else {
         const newId = `PO-2026-${String(purchaseOrders.length + 1).padStart(3, '0')}`;
         await addDoc(collection(db, 'purchaseOrders'), {
@@ -209,6 +212,7 @@ export default function Procurement() {
           creatorRole: user?.role || 'Super Admin',
           createdAt: serverTimestamp()
         });
+        toast.success(`Purchase Order created for ${selectedVendorName}! Shown exclusively to ${selectedVendorName} and Global Admin.`, 'PO Created');
       }
       setIsPoModalOpen(false);
       setEditingPoId(null);
@@ -217,9 +221,9 @@ export default function Procurement() {
         { id: '1', name: 'Solar Mono PERC Panel 550W', type: 'Panel', quantity: 20, unitPrice: 16500, taxRate: 12 },
         { id: '2', name: 'GroWatt 5kW Solar Inverter', type: 'Inverter', quantity: 2, unitPrice: 48000, taxRate: 18 }
       ]);
-      alert(`✅ Purchase Order created for ${selectedVendorName}! Shown exclusively to ${selectedVendorName} and Global Admin.`);
     } catch (err) {
       console.error('Error saving PO', err);
+      toast.error('Failed to save Purchase Order.', 'PO Error');
     }
   };
 
@@ -231,16 +235,17 @@ export default function Procurement() {
         stage: 2,
         acceptedAt: serverTimestamp()
       });
-      alert("✅ PO Accepted by Vendor! Payment & Inventory Receiving are now enabled.");
+      toast.success("PO Accepted by Vendor! Payment & Inventory Receiving are now enabled.", "PO Accepted");
     } catch (err) {
       console.error("Error accepting PO", err);
+      toast.error("Failed to accept Purchase Order.", "PO Error");
     }
   };
 
   // Receive PO Stock & Auto Add to Inventory
   const handleReceiveStockAndInvoice = async (po: any) => {
     if (po.status !== 'Accepted') {
-      alert("❌ Cannot add to Inventory: Vendor must accept the PO first!");
+      toast.error("Cannot add to Inventory: Vendor must accept the PO first!", "Acceptance Required");
       return;
     }
 
@@ -489,13 +494,13 @@ export default function Procurement() {
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-xs font-black rounded-full uppercase tracking-wider flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+            <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-emerald-200">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               User Scope: {user?.role || 'Super Admin'} ({user?.email || 'admin'})
             </span>
           </div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            <ShoppingCart className="w-8 h-8 text-blue-600" /> Vendor-Wise Purchase Orders
+            <ShoppingCart className="w-8 h-8 text-emerald-600" /> Vendor-Wise Purchase Orders
           </h1>
           <p className="text-slate-500 font-medium mt-1">
             POs are shown exclusively to their specific vendor, while Global Admin views vendor-grouped POs.
@@ -512,9 +517,9 @@ export default function Procurement() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
             className={cn(
-              "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all whitespace-nowrap",
+              "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all whitespace-nowrap cursor-pointer",
               activeTab === tab.id 
-                ? "bg-blue-600 text-white shadow-md shadow-blue-200" 
+                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-200" 
                 : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-200"
             )}
           >
@@ -533,7 +538,7 @@ export default function Procurement() {
               placeholder={activeTab === 'purchase' ? "Search POs..." : "Search Vendors..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 outline-none"
+              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 outline-none"
             />
           </div>
 
@@ -544,7 +549,7 @@ export default function Procurement() {
               <select
                 value={vendorFilter}
                 onChange={e => setVendorFilter(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 <option value="ALL">All Vendors (Vendor-Wise Grouping)</option>
                 {vendors.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
@@ -573,7 +578,7 @@ export default function Procurement() {
         <div className="flex gap-2 shrink-0">
            <button 
              onClick={() => activeTab === 'purchase' ? setIsPoModalOpen(true) : setIsVendorModalOpen(true)}
-             className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2 text-xs shadow-md shadow-blue-200"
+             className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl transition-all flex items-center gap-2 text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
            >
              <Plus className="w-4 h-4" /> {activeTab === 'purchase' ? '+ Create Purchase Order' : '+ Add Vendor'}
            </button>
@@ -810,8 +815,8 @@ export default function Procurement() {
               </div>
 
               <div className="pt-2 flex gap-3">
-                <button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-xs">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-extrabold rounded-xl hover:bg-blue-700 transition-all text-xs shadow-md shadow-blue-200">
+                <button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-xs cursor-pointer">Cancel</button>
+                <button type="submit" className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold rounded-xl transition-all text-xs shadow-md shadow-emerald-600/20 cursor-pointer">
                   Save & Send to Vendor
                 </button>
               </div>
@@ -831,11 +836,11 @@ export default function Procurement() {
             <form onSubmit={handleSubmitVendor} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Vendor Name</label>
-                <input required type="text" value={newVendor.name} onChange={e => setNewVendor({...newVendor, name: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none" />
+                <input required type="text" value={newVendor.name} onChange={e => setNewVendor({...newVendor, name: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                <select value={newVendor.category} onChange={e => setNewVendor({...newVendor, category: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
+                <select value={newVendor.category} onChange={e => setNewVendor({...newVendor, category: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none">
                   <option value="Solar Panels">Solar Panels</option>
                   <option value="Inverters">Inverters</option>
                   <option value="Batteries">Batteries</option>
@@ -847,16 +852,16 @@ export default function Procurement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Contact Email</label>
-                  <input required type="email" value={newVendor.contact} onChange={e => setNewVendor({...newVendor, contact: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none" />
+                  <input required type="email" value={newVendor.contact} onChange={e => setNewVendor({...newVendor, contact: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
-                  <input required type="tel" value={newVendor.phone} onChange={e => setNewVendor({...newVendor, phone: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none" />
+                  <input required type="tel" value={newVendor.phone} onChange={e => setNewVendor({...newVendor, phone: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
                 </div>
               </div>
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => {setIsVendorModalOpen(false); setEditingVendorId(null); setNewVendor({ name: '', category: 'Solar Panels', contact: '', phone: '' });}} className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">Add Vendor</button>
+                <button type="submit" className="flex-1 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-lg transition-colors shadow-md shadow-emerald-600/20 cursor-pointer">Save Vendor</button>
               </div>
             </form>
           </div>

@@ -57,6 +57,10 @@ export interface Project {
   state?: string;
   assignedTo?: string;
   assignedToId?: string;
+  vendorId?: string;
+  vendorName?: string;
+  installerId?: string;
+  installerName?: string;
   rating?: number;
   review?: string;
   siteSurveyImagesUrls?: string[];
@@ -96,6 +100,7 @@ export interface InventoryItem {
   serialNumber?: string;
   warranty?: string;
   vendor?: string;
+  vendorId?: string;
 }
 
 export interface Transaction {

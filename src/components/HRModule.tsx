@@ -23,10 +23,14 @@ type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave';
 interface Employee {
   id: string;
   name: string;
+  email?: string;
   role: string;
   team: string;
   contact: string;
   status: EmployeeStatus;
+  salaryType?: 'Fixed Salary' | 'Commission Only' | 'Fixed + Commission';
+  baseSalary?: number;
+  commissionRate?: number;
   joinedAt?: any;
 }
 
@@ -39,10 +43,14 @@ export default function HRModule() {
 
   const [newEmployee, setNewEmployee] = useState({
     name: '',
+    email: '',
     role: 'Survey Engineer',
     team: 'Team Alpha',
     contact: '',
-    status: 'Active' as EmployeeStatus
+    status: 'Active' as EmployeeStatus,
+    salaryType: 'Fixed Salary' as 'Fixed Salary' | 'Commission Only' | 'Fixed + Commission',
+    baseSalary: 35000,
+    commissionRate: 5
   });
 
   useEffect(() => {
@@ -304,13 +312,19 @@ export default function HRModule() {
               <button onClick={() => {setIsModalOpen(false); setEditingEmployeeId(null); setNewEmployee({ name: '', role: 'Survey Engineer', team: 'Team Alpha', contact: '', status: 'Active' });}} className="text-slate-400 hover:text-slate-600">&times;</button>
             </div>
             <form onSubmit={handleSubmitEmployee} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Employee Name</label>
-                <input required type="text" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Employee Name *</label>
+                  <input required type="text" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email Address *</label>
+                  <input required type="email" value={newEmployee.email} onChange={e => setNewEmployee({...newEmployee, email: e.target.value})} placeholder="employee@solar.com" className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Role *</label>
                   <select value={newEmployee.role} onChange={e => setNewEmployee({...newEmployee, role: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none">
                     <option value="Solar Company Admin">Solar Company Admin</option>
                     <option value="Regional Manager">Regional Manager</option>
@@ -326,7 +340,7 @@ export default function HRModule() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Team</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Team *</label>
                   <select value={newEmployee.team} onChange={e => setNewEmployee({...newEmployee, team: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none">
                     <option value="Team Alpha">Team Alpha</option>
                     <option value="Team Bravo">Team Bravo</option>
@@ -337,17 +351,25 @@ export default function HRModule() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Contact Number</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Contact Number *</label>
                   <input required type="text" value={newEmployee.contact} onChange={e => setNewEmployee({...newEmployee, contact: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Status *</label>
                   <select value={newEmployee.status} onChange={e => setNewEmployee({...newEmployee, status: e.target.value as EmployeeStatus})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none">
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
                     <option value="On Leave">On Leave</option>
                   </select>
                 </div>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase">Payroll Compensation Structure</label>
+                <select value={newEmployee.salaryType} onChange={e => setNewEmployee({...newEmployee, salaryType: e.target.value as any})} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none">
+                  <option value="Fixed Salary">Fixed Salary (Monthly)</option>
+                  <option value="Commission Only">Payroll - Commission (% per sale)</option>
+                  <option value="Fixed + Commission">Fixed Salary + Sales Commission</option>
+                </select>
               </div>
 
               <div className="pt-4 flex gap-3">

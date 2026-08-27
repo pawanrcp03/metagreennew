@@ -13,7 +13,7 @@ export default function InventoryAndPO({ initialTab = 'po' }: { initialTab?: 'po
       {/* Top Navigation Sub-Header Bar */}
       <div className="bg-slate-900 text-white p-2 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-slate-900/10">
         <div className="flex items-center gap-2 pl-2">
-          <ShoppingCart className="w-5 h-5 text-blue-400" />
+          <ShoppingCart className="w-5 h-5 text-emerald-400" />
           <div>
             <h2 className="text-sm font-black tracking-tight text-white uppercase">Inventory & PO Hub</h2>
             <p className="text-[10px] text-slate-400 font-medium">Create PO/RFQ first, send to vendor, accept PO, & receive auto-stock to inventory</p>
@@ -27,7 +27,7 @@ export default function InventoryAndPO({ initialTab = 'po' }: { initialTab?: 'po
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer",
               activeSubTab === 'po'
-                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20"
                 : "text-slate-300 hover:text-white hover:bg-slate-700/50"
             )}
           >
@@ -41,7 +41,7 @@ export default function InventoryAndPO({ initialTab = 'po' }: { initialTab?: 'po
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer",
               activeSubTab === 'inventory'
-                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20"
                 : "text-slate-300 hover:text-white hover:bg-slate-700/50"
             )}
           >
@@ -55,7 +55,7 @@ export default function InventoryAndPO({ initialTab = 'po' }: { initialTab?: 'po
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer",
               activeSubTab === 'vendors'
-                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20"
                 : "text-slate-300 hover:text-white hover:bg-slate-700/50"
             )}
           >
@@ -72,3 +72,4 @@ export default function InventoryAndPO({ initialTab = 'po' }: { initialTab?: 'po
     </div>
   );
 }
+

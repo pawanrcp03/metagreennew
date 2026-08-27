@@ -15,10 +15,13 @@ import {
   MapPin,
   Compass,
   LocateFixed,
-  Loader2
+  Loader2,
+  Wrench
 } from 'lucide-react';
 import { subscriptionService, SubscriptionPlan } from '@/src/services/subscription.service';
 import { authService } from '@/src/services/auth.service';
+import { cn } from '@/src/lib/utils';
+import { useToast } from '@/src/context/ToastContext';
 
 interface VendorRegistrationModalProps {
   selectedPlan: SubscriptionPlan;
@@ -33,10 +36,12 @@ export default function VendorRegistrationModal({
   onClose,
   onSuccess
 }: VendorRegistrationModalProps) {
+  const { toast } = useToast();
   const [activeStep, setActiveStep] = useState<1 | 2>(1);
   const [chosenPlan, setChosenPlan] = useState<SubscriptionPlan>(selectedPlan);
 
   const [formData, setFormData] = useState({
+    accountType: 'Vendor' as 'Vendor' | 'Installer',
     companyName: '',
     contactPerson: '',
     email: '',
@@ -157,15 +162,16 @@ export default function VendorRegistrationModal({
 
     try {
       // 1. Create Auth User & User Document
+      const assignedRole = formData.accountType === 'Installer' ? 'Installer' : 'Vendor';
       const userProfile = await authService.register(
         formData.email,
         formData.password,
         formData.contactPerson,
-        'Vendor',
+        assignedRole,
         formData.companyName
       );
 
-      // 2. Initialize Vendor Subscription & 7-Day Free Trial
+      // 2. Initialize Subscription & 7-Day Free Trial
       await subscriptionService.registerVendorSubscription({
         uid: userProfile.uid,
         companyName: formData.companyName,
@@ -184,11 +190,16 @@ export default function VendorRegistrationModal({
         plan: chosenPlan
       });
 
-      alert(`🎉 Vendor Account created successfully!\n\nYour 7-Day Free Trial for ${chosenPlan.name} is now active.`);
+      toast.success(
+        `🎉 ${formData.accountType === 'Installer' ? 'Solar Installer Contractor' : 'Equipment Vendor'} Account registered successfully! 7-Day Free Trial for ${chosenPlan.name} is now active.`,
+        'Account Registered'
+      );
       onSuccess();
     } catch (err: any) {
-      console.error('Vendor registration error:', err);
-      setErrorMessage(err.message || 'Failed to complete vendor registration.');
+      console.error('Registration error:', err);
+      const msg = err.message || 'Failed to complete registration.';
+      setErrorMessage(msg);
+      toast.error(msg, 'Registration Error');
     } finally {
       setLoading(false);
     }
@@ -221,12 +232,47 @@ export default function VendorRegistrationModal({
           </div>
         )}
 
-        {/* STEP 1: VENDOR DETAILS FORM */}
+        {/* STEP 1: VENDOR & INSTALLER DETAILS FORM */}
         {activeStep === 1 && (
           <form onSubmit={handleNext} className="p-6 space-y-4 overflow-y-auto flex-1 font-sans">
+            {/* Account Role Selector */}
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Select Registration Category</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, accountType: 'Vendor' }))}
+                  className={cn(
+                    "p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer text-xs font-bold",
+                    formData.accountType === 'Vendor' 
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-md" 
+                      : "bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800"
+                  )}
+                >
+                  <Building2 className="w-5 h-5" />
+                  <span>🏢 Equipment Vendor</span>
+                  <span className="text-[10px] font-normal text-slate-400">POs, Stock & Staff Users</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, accountType: 'Installer' }))}
+                  className={cn(
+                    "p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer text-xs font-bold",
+                    formData.accountType === 'Installer' 
+                      ? "bg-teal-500/20 text-teal-300 border-teal-500/50 shadow-md" 
+                      : "bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800"
+                  )}
+                >
+                  <Wrench className="w-5 h-5" />
+                  <span>🔧 Solar Installer</span>
+                  <span className="text-[10px] font-normal text-slate-400">Projects, Site BOM & 3D Rooftop</span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">Company / Vendor Name *</label>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">{formData.accountType === 'Installer' ? 'Installer Agency Name *' : 'Company / Vendor Name *'}</label>
                 <div className="relative flex items-center">
                   <Building2 className="w-4 h-4 absolute left-3 text-slate-500" />
                   <input
@@ -235,7 +281,7 @@ export default function VendorRegistrationModal({
                     name="companyName"
                     value={formData.companyName}
                     onChange={handleChange}
-                    placeholder="e.g. Vikram Solar Services"
+                    placeholder={formData.accountType === 'Installer' ? 'e.g. Apex Solar Field Installers' : 'e.g. Vikram Solar Services'}
                     className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:border-emerald-500 outline-none"
                   />
                 </div>

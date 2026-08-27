@@ -9,21 +9,24 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ onClose, onSuccess, onOpenSignUp }: LoginModalProps) {
-  const [loginType, setLoginType] = useState<'admin' | 'vendor'>('admin');
+  const [loginType, setLoginType] = useState<'admin' | 'vendor' | 'installer'>('admin');
   const [email, setEmail] = useState('admin@metagreen.com');
   const [password, setPassword] = useState('demo1234');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleTabSwitch = (type: 'admin' | 'vendor') => {
+  const handleTabSwitch = (type: 'admin' | 'vendor' | 'installer') => {
     setLoginType(type);
     setError('');
     if (type === 'admin') {
-      setEmail('admin@metagreen.com');
-      setPassword('demo1234');
-    } else {
+      setEmail('admin@solar.com');
+      setPassword('admin123');
+    } else if (type === 'vendor') {
       setEmail('vendor@vikramsolar.com');
-      setPassword('demo1234');
+      setPassword('vendor123');
+    } else {
+      setEmail('installer@solar.com');
+      setPassword('installer123');
     }
   };
 
@@ -35,6 +38,10 @@ export default function LoginModal({ onClose, onSuccess, onOpenSignUp }: LoginMo
     try {
       if (loginType === 'admin') {
         await authService.loginDemoUser('admin');
+      } else if (loginType === 'vendor') {
+        await authService.loginDemoUser('vendor');
+      } else if (loginType === 'installer') {
+        await authService.loginDemoUser('installer');
       } else {
         await authService.login(email, password);
       }
@@ -66,29 +73,41 @@ export default function LoginModal({ onClose, onSuccess, onOpenSignUp }: LoginMo
         </div>
 
         {/* Separate Login Type Tabs */}
-        <div className="p-2 bg-slate-950/60 border-b border-slate-800 flex gap-2">
+        <div className="p-2 bg-slate-950/60 border-b border-slate-800 flex gap-1.5 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => handleTabSwitch('admin')}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
               loginType === 'admin' 
                 ? 'bg-emerald-500 text-slate-950 shadow-md font-black' 
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
           >
-            <span>👑 Global Admin Portal</span>
+            <span>👑 Global Admin</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleTabSwitch('vendor')}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
               loginType === 'vendor' 
+                ? 'bg-amber-500 text-slate-950 shadow-md font-black' 
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <span>🏢 Vendor</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTabSwitch('installer')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
+              loginType === 'installer' 
                 ? 'bg-teal-500 text-slate-950 shadow-md font-black' 
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
           >
-            <span>🏪 Vendor & Staff Portal</span>
+            <span>🔧 Installer</span>
           </button>
         </div>
 
@@ -103,7 +122,11 @@ export default function LoginModal({ onClose, onSuccess, onOpenSignUp }: LoginMo
           <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-0.5">
             <span className="text-[10px] font-black uppercase text-slate-400">Selected Portal Access</span>
             <p className="text-xs font-black text-white">
-              {loginType === 'admin' ? '👑 Meta Green Global HQ Super Admin' : '🏪 Solar Vendor & Staff Dispatch Portal'}
+              {loginType === 'admin' 
+                ? '👑 Meta Green Global HQ Super Admin' 
+                : loginType === 'vendor' 
+                  ? '🏢 Solar Vendor & Staff Dispatch Portal' 
+                  : '🔧 Lead Solar Field Installer & Contractor Portal'}
             </p>
           </div>
 
@@ -116,7 +139,7 @@ export default function LoginModal({ onClose, onSuccess, onOpenSignUp }: LoginMo
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder={loginType === 'admin' ? "admin@metagreen.com" : "vendor@vikramsolar.com"}
+                placeholder={loginType === 'admin' ? "admin@solar.com" : loginType === 'vendor' ? "vendor@vikramsolar.com" : "installer@solar.com"}
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:border-emerald-500 outline-none"
               />
             </div>
@@ -142,19 +165,30 @@ export default function LoginModal({ onClose, onSuccess, onOpenSignUp }: LoginMo
             disabled={loading}
             className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
-            {loading ? 'Authenticating Credentials...' : (loginType === 'admin' ? 'Sign In as Global Admin' : 'Sign In to Vendor Portal')}
+            {loading ? 'Authenticating Credentials...' : (loginType === 'admin' ? 'Sign In as Global Admin' : loginType === 'vendor' ? 'Sign In to Vendor Portal' : 'Sign In to Installer Portal')}
             <ArrowRight className="w-4 h-4" />
           </button>
 
-          <div className="pt-3 text-center text-xs text-slate-400 border-t border-slate-800">
-            Don't have a vendor account yet?{' '}
-            <button
-              type="button"
-              onClick={onOpenSignUp}
-              className="text-emerald-400 font-extrabold hover:underline cursor-pointer"
-            >
-              Sign up for 7-Day Free Trial
-            </button>
+          {/* Separate Sign Up Callouts for Vendor and Installer */}
+          <div className="pt-3 border-t border-slate-800 space-y-2 text-center">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Need a New Subscription Account?</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onOpenSignUp}
+                className="py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1"
+              >
+                <span>🏢 Sign Up Vendor</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenSignUp}
+                className="py-2 px-3 bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1"
+              >
+                <span>🔧 Sign Up Installer</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>
