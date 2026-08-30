@@ -64,11 +64,13 @@ export default function Inventory() {
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
   const [products, setProducts] = useState<{id: string, name: string}[]>([]);
   const [selectedVendorForInstaller, setSelectedVendorForInstaller] = useState<string>('ALL');
+  const [projects, setProjects] = useState<any[]>([]);
+  const [selectedProjectIdForConsume, setSelectedProjectIdForConsume] = useState<string>('');
 
   // Strict Role Scoping based on Logged In Account
   const userRole = user?.role || 'Super Admin';
   const isVendor = userRole === 'Vendor' || userRole === 'Vendor Employee';
-  const isInstaller = userRole === 'Installer' || userRole === 'Survey Engineer';
+  const isInstaller = userRole === 'Installer' || userRole === 'Technician';
   const isGlobalAdmin = !isVendor && !isInstaller;
 
   const [newItem, setNewItem] = useState<{
@@ -80,7 +82,7 @@ export default function Inventory() {
     weight: number;
     weightUnit: 'KG' | 'TON';
     quantity: number;
-    unit: 'KW' | 'MW' | 'MTR' | 'TON' | 'KG' | 'PCS' | string;
+    unit: string;
     price: number;
     gst: number;
     pricingBasis: 'Per Unit' | 'Per Weight';
@@ -123,10 +125,16 @@ export default function Inventory() {
       setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem)));
     });
 
+    const qProjects = query(collection(db, 'projects'));
+    const unsubProjects = onSnapshot(qProjects, (snapshot) => {
+      setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     return () => {
       unsubCategories();
       unsubProducts();
       unsubItems();
+      unsubProjects();
     };
   }, []);
 
@@ -221,6 +229,11 @@ export default function Inventory() {
     if (!selectedItemForConsumption) return;
 
     const remainingQty = Math.max(0, selectedItemForConsumption.quantity - consumeQty);
+    const selectedProj = projects.find(p => p.id === selectedProjectIdForConsume);
+    const targetProjectName = selectedProj ? `${selectedProj.customerName} (${selectedProj.capacityKw} kW)` : consumeProjectName;
+    const targetCustomerName = selectedProj?.customerName || consumeProjectName;
+    const unitPrice = selectedItemForConsumption.price || 0;
+    const totalCost = consumeQty * unitPrice;
 
     try {
       // 1. Update Inventory Stock
@@ -229,14 +242,18 @@ export default function Inventory() {
         lastUpdated: serverTimestamp()
       });
 
-      // 2. Log Site Consumption Record
+      // 2. Log Site Consumption Record with Unit Cost & Project linkage
       await addDoc(collection(db, 'siteConsumptions'), {
         itemId: selectedItemForConsumption.id,
         itemName: selectedItemForConsumption.name,
         category: selectedItemForConsumption.category,
         consumedQuantity: consumeQty,
         unit: selectedItemForConsumption.unit,
-        projectName: consumeProjectName,
+        unitPrice: unitPrice,
+        totalCost: totalCost,
+        projectId: selectedProjectIdForConsume || '',
+        projectName: targetProjectName,
+        customerName: targetCustomerName,
         installerEmail: user?.email || 'installer@solar.com',
         installerName: user?.name || 'Lead Installer',
         notes: consumeNotes,
@@ -244,11 +261,12 @@ export default function Inventory() {
       });
 
       toast.success(
-        `⚡ ${consumeQty} ${selectedItemForConsumption.unit} of "${selectedItemForConsumption.name}" marked as Consumed on Site for ${consumeProjectName}!`, 
+        `⚡ ${consumeQty} ${selectedItemForConsumption.unit} of "${selectedItemForConsumption.name}" (₹${totalCost.toLocaleString('en-IN')}) marked as Consumed on Site for ${targetProjectName}!`, 
         'Site Hardware Consumed'
       );
       setIsConsumeModalOpen(false);
       setSelectedItemForConsumption(null);
+      setSelectedProjectIdForConsume('');
       setConsumeNotes('');
     } catch (err) {
       console.error('Error marking stock consumed:', err);
@@ -630,8 +648,29 @@ export default function Inventory() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Target Project Name *</label>
-                <input required type="text" value={consumeProjectName} onChange={e => setConsumeProjectName(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Ramesh Kumar 3kW Installation" />
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Target Solar Project / Customer *</label>
+                {projects.length > 0 ? (
+                  <select
+                    value={selectedProjectIdForConsume}
+                    onChange={e => {
+                      setSelectedProjectIdForConsume(e.target.value);
+                      const found = projects.find(p => p.id === e.target.value);
+                      if (found) {
+                        setConsumeProjectName(`${found.customerName} (${found.capacityKw} kW)`);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:border-emerald-500 bg-white"
+                  >
+                    <option value="">-- Choose Active Solar Project / Customer --</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.customerName} • {p.capacityKw} kW ({p.status || 'In Progress'})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input required type="text" value={consumeProjectName} onChange={e => setConsumeProjectName(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Ramesh Kumar 3kW Installation" />
+                )}
               </div>
 
               <div>

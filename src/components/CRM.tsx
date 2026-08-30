@@ -8,7 +8,9 @@ import {
   orderBy,
   doc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  getDocs,
+  where
 } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { Lead, LeadStatus } from '@/src/types';
@@ -302,51 +304,69 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
         updatedAt: serverTimestamp()
       });
 
-      // 2. Dynamically auto-create project assigned to regional officer with 10-stage initial pipeline
+      // 2. Check if a project already exists for this lead or customer to prevent duplicates
       const rawCapacity = parseFloat(targetLead.expectedLoad || '5') || 5;
       const capacityKw = targetLead.expectedLoadUnit === 'MW' ? rawCapacity * 1000 : rawCapacity;
       const totalCost = capacityKw * 55000;
 
-      const projectRef = await addDoc(collection(db, 'projects'), {
-        leadId: targetLead.id,
-        name: `${targetLead.name} Solar Installation`,
-        customerName: targetLead.name,
-        phone: targetLead.phone,
-        address: targetLead.address,
-        city: targetLead.city || '',
-        state: targetLead.state || '',
-        capacityKw: capacityKw,
-        totalCost: totalCost,
-        amountPaid: 0,
-        assignedTo: assignedOfficer.name,
-        assignedToId: assignedOfficer.id,
-        assignedRole: assignedOfficer.role,
-        region: assignedOfficer.region,
-        status: 'Initial',
-        priority: 'High',
-        history: [
-          { stage: 'Initial', timestamp: new Date().toISOString(), note: `Project created from CRM Lead: ${targetLead.name} and assigned to ${assignedOfficer.name}` }
-        ],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      const existingProjectsSnap = await getDocs(query(collection(db, 'projects'), where('leadId', '==', targetLead.id)));
+      let projectId = '';
 
-      // Auto-generate 10-stage workflow tasks
-      const DEFAULT_TASKS = [
-        { name: '1. Site Survey & Roof Inspection', requiredRole: 'Survey Engineer', start: 0, duration: 2, status: 'Pending' },
-        { name: '2. Solar PV System Design', requiredRole: 'Design Engineer', start: 2, duration: 3, status: 'Pending' },
-        { name: '3. Material Requisition & PO Creation', requiredRole: 'Procurement Officer', start: 5, duration: 2, status: 'Pending' },
-        { name: '4. Structure Fabrication & Panel Mounting', requiredRole: 'Lead Installer', start: 7, duration: 4, status: 'Pending' },
-        { name: '5. AC/DC Wiring & Net Meter Application', requiredRole: 'Electrician', start: 11, duration: 3, status: 'Pending' },
-        { name: '6. PM Surya Ghar Subsidy Claim Submission', requiredRole: 'Subsidy Specialist', start: 14, duration: 2, status: 'Pending' }
-      ];
-
-      for (const t of DEFAULT_TASKS) {
-        await addDoc(collection(db, 'projectTasks'), {
-          ...t,
-          projectId: projectRef.id,
-          createdAt: serverTimestamp()
+      if (!existingProjectsSnap.empty) {
+        const existingDoc = existingProjectsSnap.docs[0];
+        projectId = existingDoc.id;
+        await updateDoc(doc(db, 'projects', projectId), {
+          assignedTo: assignedOfficer.name,
+          assignedToId: assignedOfficer.id,
+          assignedRole: assignedOfficer.role,
+          region: assignedOfficer.region,
+          capacityKw: capacityKw,
+          totalCost: totalCost,
+          updatedAt: serverTimestamp()
         });
+      } else {
+        const projectRef = await addDoc(collection(db, 'projects'), {
+          leadId: targetLead.id,
+          name: `${targetLead.name} Solar Installation`,
+          customerName: targetLead.name,
+          phone: targetLead.phone,
+          address: targetLead.address,
+          city: targetLead.city || '',
+          state: targetLead.state || '',
+          capacityKw: capacityKw,
+          totalCost: totalCost,
+          amountPaid: 0,
+          assignedTo: assignedOfficer.name,
+          assignedToId: assignedOfficer.id,
+          assignedRole: assignedOfficer.role,
+          region: assignedOfficer.region,
+          status: 'Initial',
+          priority: 'High',
+          history: [
+            { stage: 'Initial', timestamp: new Date().toISOString(), note: `Project created from CRM Lead: ${targetLead.name} and assigned to ${assignedOfficer.name}` }
+          ],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        projectId = projectRef.id;
+
+        // Auto-generate 10-stage workflow tasks
+        const DEFAULT_TASKS = [
+          { name: '1. Site Survey & Roof Inspection', requiredRole: 'Survey Engineer', start: 0, duration: 2, status: 'Pending' },
+          { name: '2. Solar PV System Design', requiredRole: 'Design Engineer', start: 2, duration: 3, status: 'Pending' },
+          { name: '3. Material Requisition & PO Creation', requiredRole: 'Procurement Officer', start: 5, duration: 2, status: 'Pending' },
+          { name: '4. Structure Fabrication & Panel Mounting', requiredRole: 'Lead Installer', start: 7, duration: 4, status: 'Pending' },
+          { name: '5. AC/DC Wiring & Net Meter Application', requiredRole: 'Electrician', start: 11, duration: 3, status: 'Pending' },
+          { name: '6. PM Surya Ghar Subsidy Claim Submission', requiredRole: 'Subsidy Specialist', start: 14, duration: 2, status: 'Pending' }
+        ];
+
+        for (const t of DEFAULT_TASKS) {
+          await addDoc(collection(db, 'projectTasks'), {
+            ...t,
+            projectId: projectRef.id,
+            createdAt: serverTimestamp()
+          });
+        }
       }
 
       // Close assignment modal

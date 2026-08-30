@@ -4,7 +4,8 @@ import {
   AlertCircle, Users, Milestone, GitCommit, Search, Plus, ListTodo,
   AlertTriangle, Sun, Edit2, Trash2, UserCheck, Filter, ShieldCheck, Wrench,
   Star, Phone, Check, ArrowRight, IndianRupee, MessageSquare, Zap,
-  Camera, Upload, Image as ImageIcon, Eye, Sparkles, X, Package
+  Camera, Upload, Image as ImageIcon, Eye, Sparkles, X, Package,
+  UserPlus, Loader2, Briefcase, Layers, CheckSquare, Square
 } from 'lucide-react';
 import { Project, ProjectTask, ProjectStatus } from '@/src/types';
 import { cn, formatCurrency } from '@/src/lib/utils';
@@ -27,13 +28,13 @@ interface StaffMember {
 }
 
 const DEFAULT_STAFF: StaffMember[] = [
-  { id: 'emp-1', name: 'Rajesh Kumar', role: 'Lead Installer', team: 'Installation Team Alpha' },
-  { id: 'emp-2', name: 'Suresh Patel', role: 'Electrician', team: 'Electrical Team' },
-  { id: 'emp-3', name: 'Anita Sharma', role: 'Survey Engineer', team: 'Site Survey Unit' },
-  { id: 'emp-4', name: 'Priya Varma', role: 'Design Engineer', team: 'Engineering Design' },
-  { id: 'emp-5', name: 'Vikram Rao', role: 'Procurement Officer', team: 'Supply Chain' },
-  { id: 'emp-6', name: 'Ramesh Reddy', role: 'Compliance Officer', team: 'DISCOM & Approvals' },
-  { id: 'emp-7', name: 'K. Swathi', role: 'Subsidy Specialist', team: 'Finance & Subsidy' },
+  { id: 'emp-1', name: 'Rajesh Kumar', role: 'Lead Installer', team: 'Installation Team Alpha', contact: '+91 98765 43210' },
+  { id: 'emp-2', name: 'Suresh Patel', role: 'Electrician', team: 'Electrical Team', contact: '+91 98450 11223' },
+  { id: 'emp-3', name: 'Anita Sharma', role: 'Survey Engineer', team: 'Site Survey Unit', contact: '+91 97112 33445' },
+  { id: 'emp-4', name: 'Priya Varma', role: 'Design Engineer', team: 'Engineering Design', contact: '+91 99001 55667' },
+  { id: 'emp-5', name: 'Vikram Rao', role: 'Procurement Officer', team: 'Supply Chain', contact: '+91 98223 77889' },
+  { id: 'emp-6', name: 'Ramesh Reddy', role: 'Compliance Officer', team: 'DISCOM & Approvals', contact: '+91 98860 99001' },
+  { id: 'emp-7', name: 'K. Swathi', role: 'Subsidy Specialist', team: 'Finance & Subsidy', contact: '+91 97400 22334' },
 ];
 
 const PIPELINE_STAGES: ProjectStatus[] = [
@@ -79,6 +80,21 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
   const [photoModalType, setPhotoModalType] = useState<'survey' | 'installation' | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  // Staff Assignment State
+  const [selectedStaffForAssign, setSelectedStaffForAssign] = useState<StaffMember | null>(null);
+  const [isAssignStaffModalOpen, setIsAssignStaffModalOpen] = useState(false);
+  const [isSubmittingStaffAssign, setIsSubmittingStaffAssign] = useState(false);
+  const [selectedTaskIdsForAssign, setSelectedTaskIdsForAssign] = useState<string[]>([]);
+  
+  // Add Staff Modal State
+  const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
+  const [newStaffData, setNewStaffData] = useState({
+    name: '',
+    role: 'Lead Installer',
+    team: 'Installation Unit',
+    contact: ''
+  });
+
   // Review Form state
   const [starRating, setStarRating] = useState<number>(currentProject.rating || 5);
   const [reviewText, setReviewText] = useState<string>(currentProject.review || '');
@@ -117,6 +133,34 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
     return () => unsubProject();
   }, [project.id]);
 
+  // Realtime subscription for users from Firestore to merge with staff list
+  useEffect(() => {
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      if (!snapshot.empty) {
+        const dbStaff: StaffMember[] = snapshot.docs.map(d => {
+          const u = d.data();
+          return {
+            id: d.id,
+            name: u.name || u.displayName || 'Employee',
+            role: u.role || 'Field Engineer',
+            team: u.department || u.team || 'Operations',
+            contact: u.phone || u.email || ''
+          };
+        });
+
+        // Merge without duplicates
+        const merged = [...dbStaff];
+        DEFAULT_STAFF.forEach(def => {
+          if (!merged.some(m => m.name.toLowerCase() === def.name.toLowerCase())) {
+            merged.push(def);
+          }
+        });
+        setStaffList(merged);
+      }
+    });
+    return () => unsubUsers();
+  }, []);
+
   // Fetch Tasks for this project
   useEffect(() => {
     const q = query(collection(db, 'projectTasks'), where('projectId', '==', project.id), orderBy('start', 'asc'));
@@ -126,9 +170,137 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
     return () => unsubTasks();
   }, [project.id]);
 
-  // Handle stage change with mandatory site photo gatekeeper & auto completion rule
+  // Open Assign Modal for an Employee
+  const handleOpenAssignModal = (staff: StaffMember) => {
+    setSelectedStaffForAssign(staff);
+    // Pre-select tasks currently assigned to this staff member
+    const assignedIds = tasks.filter(t => t.assigneeId === staff.id || t.assigneeName === staff.name).map(t => t.id);
+    setSelectedTaskIdsForAssign(assignedIds);
+    setIsAssignStaffModalOpen(true);
+  };
+
+  // Direct 1-Click Set Project Lead
+  const handleSetProjectLead = async (staff: StaffMember) => {
+    setIsSubmittingStaffAssign(true);
+    try {
+      const updatedHistory = [
+        ...(currentProject.history || []),
+        {
+          stage: currentProject.status,
+          timestamp: new Date().toISOString(),
+          note: `Assigned ${staff.name} (${staff.role}) as Project Lead`
+        }
+      ];
+
+      await updateDoc(doc(db, 'projects', currentProject.id), {
+        assignedTo: staff.name,
+        assignedToId: staff.id,
+        installerName: staff.name,
+        installerId: staff.id,
+        history: updatedHistory
+      });
+
+      toast.success(`Assigned ${staff.name} (${staff.role}) as Project Lead!`, 'Lead Assigned');
+      setIsAssignStaffModalOpen(false);
+      setSelectedStaffForAssign(null);
+    } catch (err) {
+      console.error('Error assigning staff lead:', err);
+      toast.error('Failed to assign project lead.', 'Error');
+    } finally {
+      setIsSubmittingStaffAssign(false);
+    }
+  };
+
+  // Assign staff to selected workflow tasks
+  const handleSaveTaskAssignments = async (staff: StaffMember) => {
+    setIsSubmittingStaffAssign(true);
+    try {
+      // Update selected tasks
+      await Promise.all(
+        tasks.map(t => {
+          const shouldAssign = selectedTaskIdsForAssign.includes(t.id);
+          if (shouldAssign) {
+            return updateDoc(doc(db, 'projectTasks', t.id), {
+              assigneeName: staff.name,
+              assigneeId: staff.id,
+              assigneeRole: staff.role
+            });
+          }
+          return Promise.resolve();
+        })
+      );
+
+      toast.success(`Assigned ${staff.name} to ${selectedTaskIdsForAssign.length} workflow task(s)!`, 'Tasks Delegated');
+      setIsAssignStaffModalOpen(false);
+      setSelectedStaffForAssign(null);
+    } catch (err) {
+      console.error('Error delegating tasks:', err);
+      toast.error('Failed to delegate tasks.', 'Error');
+    } finally {
+      setIsSubmittingStaffAssign(false);
+    }
+  };
+
+  // Add new staff member to roster and database
+  const handleAddStaffMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStaffData.name.trim()) return;
+    try {
+      const newStaff: StaffMember = {
+        id: `staff-${Date.now()}`,
+        name: newStaffData.name.trim(),
+        role: newStaffData.role,
+        team: newStaffData.team,
+        contact: newStaffData.contact
+      };
+
+      await addDoc(collection(db, 'users'), {
+        name: newStaff.name,
+        role: newStaff.role,
+        department: newStaff.team,
+        phone: newStaff.contact,
+        createdAt: serverTimestamp()
+      });
+
+      setStaffList(prev => [newStaff, ...prev]);
+      toast.success(`Added ${newStaff.name} to team roster!`, 'Staff Added');
+      setIsAddStaffModalOpen(false);
+      setNewStaffData({ name: '', role: 'Lead Installer', team: 'Installation Unit', contact: '' });
+    } catch (err) {
+      console.error('Error adding staff:', err);
+      toast.error('Failed to add staff member.', 'Error');
+    }
+  };
+
+  // Handle stage change with mandatory site photo gatekeeper & previous step completion check
   const handleUpdateStage = async (newStage: ProjectStatus) => {
-    // 1. Mandatory Site Survey Photos check when assigning / moving to In Process or Assigned Installation
+    const currentIdx = PIPELINE_STAGES.indexOf(currentProject.status || 'Initial');
+    const targetIdx = PIPELINE_STAGES.indexOf(newStage);
+
+    // If clicking the current stage, no action needed
+    if (targetIdx === currentIdx) {
+      return;
+    }
+
+    // 1. Check if trying to skip ahead past uncompleted previous stages
+    if (targetIdx > currentIdx + 1) {
+      const skippedStages = PIPELINE_STAGES.slice(currentIdx + 1, targetIdx);
+      const skippedList = skippedStages.map((s, i) => `Stage ${currentIdx + i + 2}: ${s}`).join('\n• ');
+
+      const confirmSkip = window.confirm(
+        `⚠️ Incomplete Previous Stages!\n\nYou are currently at Stage ${currentIdx + 1} (${currentProject.status || 'Initial'}).\n\nThe following previous stage(s) have not been completed:\n• ${skippedList}\n\nDo you want to complete previous stages and proceed directly to Stage ${targetIdx + 1} (${newStage})?`
+      );
+
+      if (!confirmSkip) {
+        toast.warning(
+          `Please complete Stage ${currentIdx + 2} (${PIPELINE_STAGES[currentIdx + 1]}) before advancing.`,
+          'Prerequisite Required'
+        );
+        return;
+      }
+    }
+
+    // 2. Mandatory Site Survey Photos check when moving to In Process or Assigned Installation
     if (['In Process', 'Assigned Installation'].includes(newStage) && (!currentProject.siteSurveyImagesUrls || currentProject.siteSurveyImagesUrls.length === 0)) {
       setPhotoModalType('survey');
       setActiveTab('photos');
@@ -136,8 +308,8 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
       return;
     }
 
-    // 2. Mandatory Installation Photos check when moving to Installation Complete
-    if (['Installation Complete', 'Verification'].includes(newStage) && (!currentProject.installationImagesUrls || currentProject.installationImagesUrls.length === 0)) {
+    // 3. Mandatory Installation Photos check when moving to Installation Complete or beyond
+    if (['Installation Complete', 'Department Verification', 'Net Meter Installed'].includes(newStage) && (!currentProject.installationImagesUrls || currentProject.installationImagesUrls.length === 0)) {
       setPhotoModalType('installation');
       setActiveTab('photos');
       toast.warning("Installation proof photos are required before completing installation.", "Installation Photos Required");
@@ -352,24 +524,44 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
           {PIPELINE_STAGES.map((stage, idx) => {
             const isCompleted = idx < currentStageIndex;
             const isCurrent = idx === currentStageIndex;
+            const isNext = idx === currentStageIndex + 1;
+            const isLocked = idx > currentStageIndex + 1;
 
             return (
               <button
                 key={stage}
                 onClick={() => handleUpdateStage(stage)}
-                title={`Click to set stage to: ${stage}`}
+                title={
+                  isCurrent 
+                    ? `Current Active Stage: ${stage}` 
+                    : isCompleted 
+                    ? `Stage ${idx + 1} (${stage}) Completed` 
+                    : isNext 
+                    ? `Next Step: Click to advance to Stage ${idx + 1} (${stage})` 
+                    : `⚠️ Locked: Complete Stage ${currentStageIndex + 2} (${PIPELINE_STAGES[currentStageIndex + 1]}) first`
+                }
                 className={cn(
-                  "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between h-20",
+                  "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between h-20 relative group",
                   isCurrent 
                     ? "bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-lg ring-2 ring-emerald-400/40" 
                     : isCompleted 
-                    ? "bg-slate-800 text-emerald-400 border-emerald-500/30 font-bold" 
-                    : "bg-slate-950/80 text-slate-500 border-slate-800 hover:border-slate-700 font-semibold"
+                    ? "bg-slate-800 text-emerald-400 border-emerald-500/30 font-bold hover:bg-slate-750" 
+                    : isNext
+                    ? "bg-slate-900 text-emerald-300 border-emerald-500/50 hover:border-emerald-400 font-bold hover:bg-slate-850"
+                    : "bg-slate-950/80 text-slate-500 border-slate-800 hover:border-amber-500/40 font-semibold"
                 )}
               >
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] font-black">{idx + 1}</span>
-                  {isCompleted && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                  {isCompleted ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : isCurrent ? (
+                    <span className="w-2 h-2 rounded-full bg-slate-950 animate-pulse" />
+                  ) : isNext ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  ) : isLocked ? (
+                    <span className="text-[10px] text-amber-500/60 group-hover:text-amber-400 transition-colors">🔒</span>
+                  ) : null}
                 </div>
                 <p className="text-[10px] leading-tight font-extrabold line-clamp-2">{stage}</p>
               </button>
@@ -703,19 +895,129 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
 
       {/* TAB 3: ASSIGNED TEAM */}
       {activeTab === 'team' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {staffList.map(staff => (
-            <div key={staff.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-100 text-emerald-800 rounded-full flex items-center justify-center font-black text-sm">
-                {staff.name.charAt(0)}
+        <div className="space-y-4">
+          {/* Team Roster Header Toolbar */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-emerald-600" />
+                  Assigned Team Roster & Field Crew
+                </h3>
+                <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full border border-emerald-200">
+                  {staffList.length} Personnel
+                </span>
               </div>
-              <div>
-                <p className="text-xs font-black text-slate-900">{staff.name}</p>
-                <p className="text-[11px] font-bold text-emerald-600">{staff.role}</p>
-                <p className="text-[10px] text-slate-400 font-medium">{staff.team}</p>
-              </div>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Click on any employee card to assign them as Project Lead or delegate specific workflow stages.
+              </p>
             </div>
-          ))}
+
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600">
+                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Lead: <strong className="text-slate-900">{currentProject.assignedTo || 'None'}</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddStaffModalOpen(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add Team Member</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Employee Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {staffList.map(staff => {
+              const isProjectLead = currentProject.assignedTo === staff.name || currentProject.assignedToId === staff.id;
+              const assignedTasks = tasks.filter(t => t.assigneeId === staff.id || t.assigneeName === staff.name);
+
+              return (
+                <div 
+                  key={staff.id} 
+                  onClick={() => handleOpenAssignModal(staff)}
+                  className={cn(
+                    "p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 group relative overflow-hidden",
+                    isProjectLead
+                      ? "bg-gradient-to-br from-emerald-50/90 to-teal-50/70 border-emerald-400 shadow-md ring-2 ring-emerald-500/20"
+                      : "bg-white border-slate-200 hover:border-emerald-300 hover:shadow-md"
+                  )}
+                >
+                  {/* Top: Avatar, Name & Lead Badge */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm text-white shadow-xs shrink-0",
+                        isProjectLead 
+                          ? "bg-gradient-to-br from-emerald-600 to-teal-600" 
+                          : "bg-gradient-to-br from-slate-700 to-slate-900 group-hover:from-emerald-600 group-hover:to-teal-600 transition-colors"
+                      )}>
+                        {staff.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-900 group-hover:text-emerald-700 transition-colors flex items-center gap-1.5">
+                          {staff.name}
+                        </p>
+                        <span className="inline-block text-[10px] font-extrabold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md mt-0.5">
+                          {staff.role}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isProjectLead && (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white font-black text-[10px] flex items-center gap-1 shadow-xs animate-pulse shrink-0">
+                        <Check className="w-3 h-3 stroke-[3]" /> Lead
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Middle: Department & Contact */}
+                  <div className="space-y-1 text-[11px] text-slate-500 font-medium border-t border-slate-100/80 pt-2">
+                    <p className="flex items-center gap-1.5 text-slate-600">
+                      <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{staff.team || 'Installation Operations'}</span>
+                    </p>
+                    {staff.contact && (
+                      <p className="flex items-center gap-1.5 text-slate-500">
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{staff.contact}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Bottom Action Footer */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100/80 text-[10px]">
+                    <span className={cn(
+                      "font-bold px-2 py-0.5 rounded-md",
+                      assignedTasks.length > 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
+                    )}>
+                      {assignedTasks.length > 0 ? `✓ ${assignedTasks.length} Task(s) Assigned` : 'No Tasks Yet'}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenAssignModal(staff);
+                      }}
+                      className={cn(
+                        "px-3 py-1 rounded-xl font-black text-[11px] transition-all flex items-center gap-1 cursor-pointer shadow-xs",
+                        isProjectLead
+                          ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                          : "bg-slate-100 text-slate-700 hover:bg-emerald-600 hover:text-white border border-slate-200 hover:border-emerald-600"
+                      )}
+                    >
+                      <UserCheck className="w-3 h-3" />
+                      <span>{isProjectLead ? 'Manage' : 'Assign'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -826,18 +1128,286 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
         </div>
       )}
 
+      {/* ASSIGN EMPLOYEE MODAL */}
+      {isAssignStaffModalOpen && selectedStaffForAssign && (
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setIsAssignStaffModalOpen(false)}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200 font-sans"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Sticky Header with Prominent Close Button */}
+            <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0 sticky top-0 z-30 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Assign Employee to Project</h3>
+                  <p className="text-[11px] text-slate-500 font-medium">{currentProject.customerName} ({currentProject.capacityKw} kW Solar)</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsAssignStaffModalOpen(false)} 
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
+              >
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
+              {/* Employee Card */}
+              <div className="p-4 bg-gradient-to-br from-slate-50 to-emerald-50/50 rounded-2xl border border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center font-black text-lg shadow-md shrink-0">
+                    {selectedStaffForAssign.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">{selectedStaffForAssign.name}</h4>
+                    <p className="text-xs font-bold text-emerald-700">{selectedStaffForAssign.role}</p>
+                    <p className="text-[11px] text-slate-500">{selectedStaffForAssign.team} {selectedStaffForAssign.contact ? `• ${selectedStaffForAssign.contact}` : ''}</p>
+                  </div>
+                </div>
+                {currentProject.assignedTo === selectedStaffForAssign.name && (
+                  <span className="px-2.5 py-1 bg-emerald-100 border border-emerald-300 text-emerald-800 font-black text-xs rounded-xl flex items-center gap-1 shrink-0">
+                    <Check className="w-3.5 h-3.5" /> Current Lead
+                  </span>
+                )}
+              </div>
+
+              {/* Action 1: Set as Project Lead */}
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-xs font-black text-slate-800 uppercase tracking-wider">Primary Project Lead Assignment</h5>
+                    <p className="text-[11px] text-slate-500 font-medium">Assigns {selectedStaffForAssign.name} as the primary lead displayed on project records.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isSubmittingStaffAssign}
+                  onClick={() => handleSetProjectLead(selectedStaffForAssign)}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingStaffAssign ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                  <span>{currentProject.assignedTo === selectedStaffForAssign.name ? 'Reconfirm as Project Lead' : '★ Confirm as Primary Project Lead'}</span>
+                </button>
+              </div>
+
+              {/* Action 2: Delegate Workflow Tasks */}
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div>
+                    <h5 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-emerald-600" /> Delegate Workflow Tasks
+                    </h5>
+                    <p className="text-[11px] text-slate-500">Select tasks for {selectedStaffForAssign.name} to complete</p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskIdsForAssign(tasks.map(t => t.id))}
+                      className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskIdsForAssign([])}
+                      className="text-[10px] font-bold text-slate-500 hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                {tasks.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-3">No tasks added to this project yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {tasks.map(task => {
+                      const isSelected = selectedTaskIdsForAssign.includes(task.id);
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => {
+                            setSelectedTaskIdsForAssign(prev =>
+                              prev.includes(task.id) ? prev.filter(id => id !== task.id) : [...prev, task.id]
+                            );
+                          }}
+                          className={cn(
+                            "p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between cursor-pointer transition-colors",
+                            isSelected ? "bg-emerald-50 border-emerald-400 text-emerald-900" : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                            )}
+                            <span>{task.name}</span>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">
+                            {task.status}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={isSubmittingStaffAssign || tasks.length === 0}
+                  onClick={() => handleSaveTaskAssignments(selectedStaffForAssign)}
+                  className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingStaffAssign ? <Loader2 className="w-4 h-4 animate-spin" /> : <ListTodo className="w-4 h-4 text-emerald-400" />}
+                  <span>Save Task Delegation ({selectedTaskIdsForAssign.length} selected)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD NEW TEAM MEMBER MODAL */}
+      {isAddStaffModalOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setIsAddStaffModalOpen(false)}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200 font-sans"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 py-4.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-xs">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Add New Team Member</h3>
+                  <p className="text-[11px] text-slate-500 font-medium">Register engineer or installer into company crew roster</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsAddStaffModalOpen(false)} 
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
+              >
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleAddStaffMember} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name *</label>
+                <input
+                  required
+                  type="text"
+                  value={newStaffData.name}
+                  onChange={e => setNewStaffData({ ...newStaffData, name: e.target.value })}
+                  placeholder="e.g. Arvind Sharma"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Role / Specialization *</label>
+                <select
+                  value={newStaffData.role}
+                  onChange={e => setNewStaffData({ ...newStaffData, role: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                >
+                  <option value="Lead Installer">Lead Installer</option>
+                  <option value="Electrician">Electrician</option>
+                  <option value="Survey Engineer">Survey Engineer</option>
+                  <option value="Design Engineer">Design Engineer</option>
+                  <option value="Procurement Officer">Procurement Officer</option>
+                  <option value="Compliance Officer">Compliance Officer</option>
+                  <option value="Subsidy Specialist">Subsidy Specialist</option>
+                  <option value="Project Manager">Project Manager</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Department / Team</label>
+                <input
+                  type="text"
+                  value={newStaffData.team}
+                  onChange={e => setNewStaffData({ ...newStaffData, team: e.target.value })}
+                  placeholder="e.g. Installation Team Alpha"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Contact Phone</label>
+                <input
+                  type="tel"
+                  value={newStaffData.contact}
+                  onChange={e => setNewStaffData({ ...newStaffData, contact: e.target.value })}
+                  placeholder="e.g. +91 98765 00000"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div className="pt-3 flex gap-3 border-t border-slate-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsAddStaffModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Add to Roster</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ADD TASK MODAL */}
       {isTaskModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 font-sans">
-            <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setIsTaskModalOpen(false)}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200 font-sans"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 py-4.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-xs">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                 <ListTodo className="w-5 h-5 text-emerald-600" /> Add Project Task
               </h3>
-              <button onClick={() => setIsTaskModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+              <button 
+                type="button"
+                onClick={() => setIsTaskModalOpen(false)} 
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
+              >
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
+              </button>
             </div>
 
-            <form onSubmit={handleSaveTask} className="p-6 space-y-4">
+            <form onSubmit={handleSaveTask} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Task Description *</label>
                 <input required type="text" value={newTask.name} onChange={e => setNewTask({ ...newTask, name: e.target.value })} placeholder="e.g. Earthing & AC DB Connection" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" />
@@ -845,7 +1415,7 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Required Role</label>
-                <select value={newTask.requiredRole} onChange={e => setNewTask({ ...newTask, requiredRole: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select value={newTask.requiredRole} onChange={e => setNewTask({ ...newTask, requiredRole: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white">
                   <option value="Lead Installer">Lead Installer</option>
                   <option value="Electrician">Electrician</option>
                   <option value="Survey Engineer">Survey Engineer</option>
@@ -867,8 +1437,8 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
               </div>
 
               <div className="pt-2 flex gap-3">
-                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-200">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-extrabold rounded-xl text-xs hover:bg-emerald-700 shadow-md shadow-emerald-200">Save Task</button>
+                <button type="button" onClick={() => setIsTaskModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-200 cursor-pointer">Cancel</button>
+                <button type="submit" className="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-extrabold rounded-xl text-xs hover:bg-emerald-700 shadow-md shadow-emerald-200 cursor-pointer">Save Task</button>
               </div>
             </form>
           </div>

@@ -216,6 +216,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
       title: 'Finance',
       badge: 'Ledger',
       icon: IndianRupee,
+      directView: 'finance',
       items: [
         {
           id: 'finance',
@@ -232,21 +233,14 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
       title: 'Subsidy',
       badge: 'Portal',
       icon: Landmark,
+      directView: 'subsidy',
       items: [
         {
           id: 'subsidy',
-          label: 'Subsidy Portal',
+          label: 'Subsidy & Claim Tracking',
           subHeader: 'PM Surya Ghar DBT Claims',
-          description: '6-Stage subsidy tracking, application ref numbers & direct benefit transfers',
+          description: '6-Stage subsidy tracking, application ref numbers, JIR reports & direct benefit transfers',
           icon: Landmark,
-          roles: ['Super Admin', 'Solar Company Admin', 'Finance Manager', 'Customer Support']
-        },
-        {
-          id: 'subsidy',
-          label: 'Document Verification',
-          subHeader: 'JIR & Technical Feasibility',
-          description: 'Upload and verify Joint Inspection Reports (JIR), DCR certificates & bank passbooks',
-          icon: ShieldCheck,
           roles: ['Super Admin', 'Solar Company Admin', 'Finance Manager', 'Customer Support']
         }
       ]
@@ -259,17 +253,9 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
       items: [
         {
           id: 'support',
-          label: 'Support',
-          subHeader: 'Enterprise Customer Care',
-          description: 'Multi-channel support routing to sales@metadev.in & support@metadev.in',
-          icon: Settings,
-          roles: ['Super Admin', 'Solar Company Admin', 'Customer Support', 'Project Manager']
-        },
-        {
-          id: 'support',
-          label: 'Tickets',
-          subHeader: 'Manageable Complaint Categories',
-          description: 'Dynamic ticket types with instant category addition & engineer assignment',
+          label: 'Support & Tickets',
+          subHeader: 'Customer Care & Ticket Helpdesk',
+          description: 'Multi-channel enterprise care, complaint categories, SLA tracking & engineer assignment',
           icon: MessageSquare,
           roles: ['Super Admin', 'Solar Company Admin', 'Customer Support', 'Project Manager']
         },
@@ -344,14 +330,23 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
   const activeInfo = getActiveItemInfo();
 
   const handleCategoryClick = (category: NavCategory) => {
-    // If Dashboard, navigate directly
-    if (category.id === 'dashboard-group' && category.directView) {
+    // If category has directView or only 1 item, navigate directly
+    if (category.directView) {
       setView(category.directView);
       setOpenDropdown(null);
       return;
     }
 
-    // Toggle dropdown for all other categories
+    const validItems = filterSubItems(category.items);
+    if (validItems.length <= 1) {
+      if (validItems.length === 1) {
+        setView(validItems[0].id);
+      }
+      setOpenDropdown(null);
+      return;
+    }
+
+    // Toggle dropdown for multi-item categories
     setOpenDropdown(prev => (prev === category.id ? null : category.id));
   };
 
@@ -389,8 +384,8 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
             if (validItems.length === 0) return null;
 
             const isActive = isCategoryActive(category);
+            const hasSubmenu = !category.directView && validItems.length > 1;
             const isOpen = openDropdown === category.id;
-            const isDashboard = category.id === 'dashboard-group';
             const isRightAligned = idx >= 6; // Align right for Subsidy, Support & Docs, Admin & HR
 
             return (
@@ -419,7 +414,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                   )}
 
-                  {!isDashboard && (
+                  {hasSubmenu && (
                     <ChevronDown className={cn(
                       "w-3 h-3 xl:w-3.5 xl:h-3.5 transition-transform duration-200 text-slate-400 shrink-0",
                       isOpen ? "rotate-180 text-emerald-400" : ""
@@ -428,7 +423,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
                 </button>
 
                 {/* Submenu Dropdown on Click */}
-                {isOpen && !isDashboard && (
+                {isOpen && hasSubmenu && (
                   <div 
                     className={cn(
                       "absolute top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] bg-[#0f172a] border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-[100] animate-in fade-in zoom-in-95 duration-150 ring-1 ring-slate-800 text-slate-200 block",

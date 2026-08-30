@@ -32,7 +32,9 @@ import {
   ShieldCheck,
   Star,
   Building2,
-  Check
+  Check,
+  Sparkles,
+  Users
 } from 'lucide-react';
 import { formatCurrency, cn } from '@/src/lib/utils';
 import { format } from 'date-fns';
@@ -78,6 +80,7 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [showFifoQueue, setShowFifoQueue] = useState(false);
   
   const getCleanProjectState = (): Partial<Project> => ({ 
     leadId: '',
@@ -224,19 +227,50 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
 
   const handleAdvanceStage = async (project: Project, e: React.MouseEvent) => {
     e.stopPropagation();
-    const currentIndex = PIPELINE_STAGES.indexOf(project.status || 'Initial');
+    const currentStage = project.status || 'Initial';
+    const currentIndex = PIPELINE_STAGES.indexOf(currentStage);
     if (currentIndex < PIPELINE_STAGES.length - 1) {
       const nextStage = PIPELINE_STAGES[currentIndex + 1];
       const updatedHistory = [
         ...(project.history || []),
-        { stage: nextStage, timestamp: new Date().toISOString(), note: `Advanced from ${project.status} to ${nextStage}` }
+        { stage: nextStage, timestamp: new Date().toISOString(), note: `Advanced from ${currentStage} to ${nextStage}` }
       ];
 
+      // Find any duplicate test entries for the same customer in the same stage to ensure the previous stage column is cleanly emptied
+      const duplicateProjectsInSameStage = projects.filter(p => 
+        p.id !== project.id && 
+        (p.status || 'Initial') === currentStage && 
+        p.customerName && project.customerName && 
+        p.customerName.trim().toLowerCase() === project.customerName.trim().toLowerCase()
+      );
+
+      // 1. Optimistically update local state immediately so previous stage is instantly emptied and next stage receives the project
+      setProjects(prev => prev.map(p => {
+        if (p.id === project.id) {
+          return { ...p, status: nextStage, history: updatedHistory };
+        }
+        if (duplicateProjectsInSameStage.some(dup => dup.id === p.id)) {
+          return { ...p, status: nextStage, history: updatedHistory };
+        }
+        return p;
+      }));
+
       try {
+        // 2. Persist update to Firestore
         await updateDoc(doc(db, 'projects', project.id), {
           status: nextStage,
-          history: updatedHistory
+          history: updatedHistory,
+          updatedAt: serverTimestamp()
         });
+
+        // 3. Also synchronize any duplicate test instances so previous column is not cluttered
+        for (const dup of duplicateProjectsInSameStage) {
+          await updateDoc(doc(db, 'projects', dup.id), {
+            status: nextStage,
+            history: updatedHistory,
+            updatedAt: serverTimestamp()
+          });
+        }
       } catch (err) {
         console.error('Error advancing stage:', err);
       }
@@ -267,6 +301,36 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
   if (selectedProject) {
     return <ProjectDetails project={selectedProject} onBack={() => setSelectedProject(null)} />;
   }
+
+  const COMPLETED_STAGES: ProjectStatus[] = ['Completed', 'Customer Review'];
+
+  // Sort projects strictly by FIFO (earliest created project first)
+  const fifoProjects = [...filteredProjects].sort((a, b) => {
+    const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+    return tA - tB; // FIFO order
+  });
+
+  // Check if any project is currently in-flight in intermediate active stages (In Process -> Subsidy Released)
+  const activeInFlightProject = fifoProjects.find(p => 
+    p.status && p.status !== 'Initial' && !COMPLETED_STAGES.includes(p.status)
+  );
+
+  // All projects currently with status 'Initial' in FIFO order
+  const initialQueue = fifoProjects.filter(p => (p.status || 'Initial') === 'Initial');
+
+  // Stage resolver: All initial projects are shown in FIFO order in Initial column
+  const getStageProjects = (stage: ProjectStatus): Project[] => {
+    if (stage === 'Initial') {
+      return initialQueue; // Show all remaining queued projects in Initial
+    }
+
+    if (COMPLETED_STAGES.includes(stage)) {
+      return fifoProjects.filter(p => p.status === stage);
+    }
+
+    return fifoProjects.filter(p => p.status === stage);
+  };
 
   // Dashboard Metrics
   const activeCount = projects.filter(p => !p.isDeleted && ['Initial', 'In Process', 'Assigned Installation', 'Installation Complete'].includes(p.status)).length;
@@ -416,6 +480,39 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
             </button>
           </div>
 
+          {/* Clean Duplicates Button if any duplicate test projects exist */}
+          {projects.filter((p, i, arr) => 
+            !p.isDeleted && arr.findIndex(x => !x.isDeleted && x.id !== p.id && x.customerName && p.customerName && x.customerName.trim().toLowerCase() === p.customerName.trim().toLowerCase() && x.status === p.status) !== -1
+          ).length > 0 && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!window.confirm("Clean duplicate test project records and keep only one per customer?")) return;
+                try {
+                  const seen = new Set<string>();
+                  const toDelete: string[] = [];
+                  projects.forEach(p => {
+                    const key = `${(p.customerName || '').trim().toLowerCase()}-${p.status || 'Initial'}`;
+                    if (seen.has(key)) {
+                      toDelete.push(p.id);
+                    } else {
+                      seen.add(key);
+                    }
+                  });
+                  for (const id of toDelete) {
+                    await deleteDoc(doc(db, 'projects', id));
+                  }
+                } catch (err) {
+                  console.error('Error cleaning duplicates:', err);
+                }
+              }}
+              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Clean duplicate test project entries"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" /> Clean Duplicate Projects
+            </button>
+          )}
+
           {/* Trash Toggle */}
           <button 
             onClick={() => setShowTrash(!showTrash)}
@@ -434,7 +531,7 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
       {viewMode === 'kanban' && (
         <div className="flex overflow-x-auto pb-6 gap-4 no-scrollbar min-h-[600px] items-start">
           {PIPELINE_STAGES.map((stage, stageIdx) => {
-            const stageProjects = filteredProjects.filter(p => (p.status || 'Initial') === stage);
+            const stageProjects = getStageProjects(stage);
             const colorTheme = STAGE_COLOR_MAP[stage] || STAGE_COLOR_MAP['Initial'];
 
             return (
@@ -452,15 +549,31 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
                   </span>
                 </div>
 
-                {/* Project Cards (Minimizable by default to save screen space) */}
+                {/* Project Cards in FIFO Order */}
                 <div className="space-y-2.5">
+                  {stage === 'Initial' && activeInFlightProject && (
+                    <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-[10.5px] space-y-0.5 text-amber-900 font-medium">
+                      <div className="flex items-center gap-1 font-black text-amber-950">
+                        <Clock className="w-3 h-3 text-amber-600" /> Pipeline Flow Active
+                      </div>
+                      <p className="leading-tight text-xs">
+                        <span className="font-bold underline">{activeInFlightProject.customerName}</span> is at <span className="font-extrabold">{activeInFlightProject.status}</span>.
+                      </p>
+                      <p className="text-slate-500 text-[9.5px]">
+                        {initialQueue.length} remaining project(s) waiting in queue below.
+                      </p>
+                    </div>
+                  )}
+
                   {stageProjects.length === 0 ? (
                     <div className="p-6 text-center text-slate-400 font-semibold text-xs border border-dashed border-slate-300 rounded-xl bg-white/50">
                       No projects in this stage
                     </div>
                   ) : (
-                    stageProjects.map(project => {
+                    stageProjects.map((project, pIdx) => {
                       const isExpanded = !!expandedCards[project.id];
+                      const isInitialWaiting = stage === 'Initial' && (!!activeInFlightProject || pIdx > 0);
+
                       return (
                         <div
                           key={project.id}
@@ -476,9 +589,22 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
                               onClick={() => setSelectedProject(project)}
                               className="cursor-pointer flex-1"
                             >
-                              <h4 className="text-xs font-black text-slate-900 group-hover:text-emerald-600 transition-colors leading-tight">
-                                {project.customerName}
-                              </h4>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-xs font-black text-slate-900 group-hover:text-emerald-600 transition-colors leading-tight">
+                                  {project.customerName}
+                                </h4>
+                                <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  #{project.id.slice(-5).toUpperCase()}
+                                </span>
+                                {stage === 'Initial' && (
+                                  <span className={cn(
+                                    "text-[9px] font-black px-1.5 py-0.2 rounded",
+                                    !isInitialWaiting ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800 border border-amber-200"
+                                  )}>
+                                    {!isInitialWaiting ? '⚡ Ready' : `⏳ Queue #${pIdx + 1}`}
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-1.5 mt-1">
                                 <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 font-extrabold rounded text-[10px]">
                                   ⚡ {project.capacityKw} kW
@@ -543,12 +669,22 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
 
                               {/* Advance Stage Button */}
                               {stageIdx < PIPELINE_STAGES.length - 1 && (
-                                <button
-                                  onClick={(e) => handleAdvanceStage(project, e)}
-                                  className="w-full py-1.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1 mt-1 shadow-xs cursor-pointer"
-                                >
-                                  Move to {PIPELINE_STAGES[stageIdx + 1]} <ChevronRight className="w-3.5 h-3.5" />
-                                </button>
+                                isInitialWaiting ? (
+                                  <button
+                                    disabled
+                                    className="w-full py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 mt-1 cursor-not-allowed"
+                                    title={activeInFlightProject ? `Waiting for active project #${activeInFlightProject.id.slice(-5).toUpperCase()} to complete` : `Waiting for earlier queue project`}
+                                  >
+                                    🔒 In Queue (Waiting)
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={(e) => handleAdvanceStage(project, e)}
+                                    className="w-full py-1.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1 mt-1 shadow-xs cursor-pointer"
+                                  >
+                                    Move to {PIPELINE_STAGES[stageIdx + 1]} <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                )
                               )}
                             </div>
                           )}
@@ -579,7 +715,7 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {filteredProjects.map(p => (
+              {fifoProjects.map(p => (
                 <tr 
                   key={p.id} 
                   onClick={() => setSelectedProject(p)}
