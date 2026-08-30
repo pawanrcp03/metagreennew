@@ -16,7 +16,8 @@ import {
   Zap,
   Sparkles,
   Printer,
-  UserPlus
+  UserPlus,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -30,6 +31,7 @@ export default function ProposalGenerator() {
   const { logos } = useLogos();
   const { user } = useAuth();
   const [isExporting, setIsExporting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const vendorCompanyName = user?.companyName || user?.vendorAccount?.companyName || logos.companyName || 'META GREEN';
   const vendorLogo = user?.companyLogo || user?.vendorAccount?.companyLogo || logos.companyLogo;
@@ -73,6 +75,7 @@ export default function ProposalGenerator() {
   // Add Walk-in Lead directly to Firestore
   const handleAddWalkinCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       const newLeadDoc = {
         name: walkinData.name,
@@ -104,6 +107,8 @@ export default function ProposalGenerator() {
     } catch (err) {
       console.error('Error adding walk-in customer:', err);
       alert('Failed to add walk-in customer.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -164,6 +169,7 @@ export default function ProposalGenerator() {
   };
 
   const handleSaveProposal = async () => {
+    setIsSubmitting(true);
     try {
       await addDoc(collection(db, 'proposals'), {
         ...proposalData,
@@ -171,10 +177,12 @@ export default function ProposalGenerator() {
         emiAmount,
         createdAt: serverTimestamp()
       });
-      alert('Proposal saved successfully to the database.');
+      alert('✅ Proposal saved successfully to the database.');
     } catch (err) {
       console.error('Error saving proposal:', err);
       alert('Failed to save proposal.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -195,31 +203,36 @@ export default function ProposalGenerator() {
           <button 
             type="button"
             onClick={() => setIsWalkinModalOpen(true)}
-            className="px-3.5 py-2 bg-emerald-600 text-white font-extrabold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-1.5 text-xs shadow-md shadow-emerald-200"
+            className="px-3.5 py-2 bg-emerald-600 text-white font-extrabold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-1.5 text-xs shadow-md shadow-emerald-200 cursor-pointer"
           >
             <UserPlus className="w-4 h-4" /> + Direct Add Walk-in Lead
           </button>
           <button 
+            type="button"
             onClick={handleSaveProposal}
-            className="px-3.5 py-2 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-1.5 text-xs border border-blue-200"
+            disabled={isSubmitting}
+            className="px-3.5 py-2 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-1.5 text-xs border border-blue-200 cursor-pointer disabled:opacity-50"
           >
-            <ShieldCheck className="w-4 h-4" /> Save DB
+            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+            <span>{isSubmitting ? 'Saving...' : 'Save DB'}</span>
           </button>
           <button 
+            type="button"
             onClick={handleExportPDF}
             disabled={isExporting}
-            className="px-3.5 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-colors flex items-center gap-1.5 text-xs disabled:opacity-50"
+            className="px-3.5 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-colors flex items-center gap-1.5 text-xs disabled:opacity-50 cursor-pointer"
           >
-            {isExporting ? <Clock className="w-4 h-4 animate-spin"/> : <Download className="w-4 h-4" />} 
-            {isExporting ? 'Exporting...' : 'Download PDF'}
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Download className="w-4 h-4" />} 
+            <span>{isExporting ? 'Exporting...' : 'Download PDF'}</span>
           </button>
           <button 
+            type="button"
             onClick={handleEmailProposal}
             disabled={isEmailing}
-            className="px-3.5 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-1.5 text-xs shadow-md shadow-emerald-200 disabled:opacity-50"
+            className="px-3.5 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-1.5 text-xs shadow-md shadow-emerald-200 disabled:opacity-50 cursor-pointer"
           >
-            {isEmailing ? <Clock className="w-4 h-4 animate-spin"/> : <Mail className="w-4 h-4" />}
-            {isEmailing ? 'Sending...' : 'Email Proposal'}
+            {isEmailing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Mail className="w-4 h-4" />}
+            <span>{isEmailing ? 'Sending...' : 'Email Proposal'}</span>
           </button>
         </div>
       </header>
@@ -527,9 +540,15 @@ export default function ProposalGenerator() {
 
       {/* QUICK ADD WALK-IN CUSTOMER MODAL */}
       {isWalkinModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setIsWalkinModalOpen(false)}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-xs">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-emerald-600" /> Quick Add Walk-in Customer
@@ -537,10 +556,13 @@ export default function ProposalGenerator() {
                 <p className="text-[11px] text-slate-500 font-medium">Saves lead directly to CRM with 'Walk-in' tag</p>
               </div>
               <button 
+                type="button"
                 onClick={() => setIsWalkinModalOpen(false)} 
-                className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
               >
-                &times;
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
               </button>
             </div>
 
@@ -619,15 +641,17 @@ export default function ProposalGenerator() {
                 <button
                   type="button"
                   onClick={() => setIsWalkinModalOpen(false)}
-                  className="flex-1 px-3 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                  className="flex-1 px-3 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-3 py-2 bg-emerald-600 text-white text-xs font-extrabold rounded-xl hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200"
+                  disabled={isSubmitting}
+                  className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md shadow-emerald-200 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  Save Walk-in Lead & Select
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  <span>{isSubmitting ? 'Saving Lead...' : 'Save Walk-in Lead & Select'}</span>
                 </button>
               </div>
             </form>

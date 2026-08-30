@@ -250,8 +250,8 @@ export default function VendorRegistrationModal({
                   )}
                 >
                   <Building2 className="w-5 h-5" />
-                  <span>🏢 Equipment Vendor</span>
-                  <span className="text-[10px] font-normal text-slate-400">POs, Stock & Staff Users</span>
+                  <span>🏢 Solar Supplier</span>
+                  <span className="text-[10px] font-normal text-slate-400">POs, Stock & Hardware Supply</span>
                 </button>
                 <button
                   type="button"
@@ -265,14 +265,14 @@ export default function VendorRegistrationModal({
                 >
                   <Wrench className="w-5 h-5" />
                   <span>🔧 Solar Installer</span>
-                  <span className="text-[10px] font-normal text-slate-400">Projects, Site BOM & 3D Rooftop</span>
+                  <span className="text-[10px] font-normal text-slate-400">Projects, Site Survey & Installation</span>
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">{formData.accountType === 'Installer' ? 'Installer Agency Name *' : 'Company / Vendor Name *'}</label>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">{formData.accountType === 'Installer' ? 'Solar Installer Agency Name *' : 'Solar Supplier Company Name *'}</label>
                 <div className="relative flex items-center">
                   <Building2 className="w-4 h-4 absolute left-3 text-slate-500" />
                   <input
@@ -288,18 +288,31 @@ export default function VendorRegistrationModal({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">Upload Company Logo *</label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-300 uppercase">Company Logo (Optional)</label>
+                  {formData.companyLogo && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, companyLogo: '' }))}
+                      className="text-[10px] text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                    >
+                      ✕ Remove Logo
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleLogoUpload}
-                    className="w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-emerald-400 hover:file:bg-slate-700 cursor-pointer"
+                    className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-emerald-400 hover:file:bg-slate-700 cursor-pointer"
                   />
-                  {formData.companyLogo && (
-                    <div className="w-9 h-9 rounded-xl border border-slate-700 bg-slate-950 p-1 shrink-0 flex items-center justify-center">
-                      <img src={formData.companyLogo} alt="Logo" className="max-h-full max-w-full object-contain" />
+                  {formData.companyLogo ? (
+                    <div className="w-10 h-10 rounded-xl border border-emerald-500/40 bg-slate-900 p-1 shrink-0 flex items-center justify-center relative group">
+                      <img src={formData.companyLogo} alt="Logo Preview" className="max-h-full max-w-full object-contain" />
                     </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-semibold shrink-0">No logo uploaded</span>
                   )}
                 </div>
               </div>

@@ -18,10 +18,12 @@ import {
   Sparkles,
   UserPlus,
   MapPin,
-  Phone
+  Phone,
+  Loader2,
+  RotateCcw
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { Lead } from '@/src/types';
 import { useLogos } from '@/src/context/LogoContext';
@@ -75,6 +77,8 @@ export default function QuotationBuilder() {
   const [versions, setVersions] = useState<QuotationVersion[]>([]);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Walk-in Customer Modal state
   const [isWalkinModalOpen, setIsWalkinModalOpen] = useState(false);
@@ -178,6 +182,7 @@ export default function QuotationBuilder() {
   // Add Walk-in Lead directly to Firestore
   const handleAddWalkinCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       const newLeadDoc = {
         name: walkinData.name,
@@ -213,6 +218,8 @@ export default function QuotationBuilder() {
     } catch (err) {
       console.error('Error adding walk-in customer:', err);
       alert('Failed to add walk-in customer.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -229,11 +236,10 @@ export default function QuotationBuilder() {
   };
 
   const handleAddItem = () => {
-    if (activeVersion.status !== 'Draft') return;
     const newItem: QuotationItem = {
       id: Date.now().toString(),
       category: 'Panel',
-      name: 'New Component',
+      name: 'New Solar Component',
       quantity: 1,
       unitPrice: 5000
     };
@@ -241,14 +247,38 @@ export default function QuotationBuilder() {
     updateVersionInDb(activeVersion.id, { items: updatedItems });
   };
 
+  // Fixed & Unblocked Item Deletion
   const handleRemoveItem = (id: string) => {
-    if (activeVersion.status !== 'Draft') return;
+    if (activeVersion.items.length <= 1) {
+      if (!window.confirm("This is the only item left. Do you want to remove it?")) return;
+    }
     const updatedItems = activeVersion.items.filter(item => item.id !== id);
     updateVersionInDb(activeVersion.id, { items: updatedItems });
   };
 
+  // Delete entire quotation version from Firestore
+  const handleDeleteVersion = async (versionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete this quotation version?`)) return;
+    
+    setIsSubmitting(true);
+    try {
+      await deleteDoc(doc(db, 'quotationVersions', versionId));
+      const remaining = versions.filter(v => v.id !== versionId);
+      setVersions(remaining);
+      if (remaining.length > 0) {
+        setActiveVersionId(remaining[0].id);
+      }
+      alert('✅ Quotation version deleted successfully.');
+    } catch (err) {
+      console.error('Error deleting quotation version:', err);
+      alert('Failed to delete quotation version.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleUpdateItem = (id: string, field: keyof QuotationItem, value: any) => {
-    if (activeVersion.status !== 'Draft') return;
     const updatedItems = activeVersion.items.map(item => {
       if (item.id === id) {
         return { ...item, [field]: value };
@@ -259,39 +289,65 @@ export default function QuotationBuilder() {
   };
 
   const handleUpdateCost = (field: keyof QuotationVersion, value: any) => {
-    if (activeVersion.status !== 'Draft') return;
     updateVersionInDb(activeVersion.id, { [field]: value });
   };
 
   const handleCreateNewVersion = async () => {
-    const newVersion: any = {
-      ...activeVersion,
-      versionNumber: versions.length + 1,
-      date: new Date().toISOString().split('T')[0],
-      status: 'Draft',
-      createdAt: serverTimestamp()
-    };
-    delete newVersion.id;
-    const docRef = await addDoc(collection(db, 'quotationVersions'), newVersion);
-    setActiveVersionId(docRef.id);
-    setIsHistoryOpen(false);
+    setIsSubmitting(true);
+    try {
+      const newVersion: any = {
+        ...activeVersion,
+        versionNumber: versions.length + 1,
+        date: new Date().toISOString().split('T')[0],
+        status: 'Draft',
+        createdAt: serverTimestamp()
+      };
+      delete newVersion.id;
+      const docRef = await addDoc(collection(db, 'quotationVersions'), newVersion);
+      setActiveVersionId(docRef.id);
+      setIsHistoryOpen(false);
+      alert(`✅ Created new quotation version v${newVersion.versionNumber}!`);
+    } catch (err) {
+      console.error('Error creating version:', err);
+      alert('Failed to create new version.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSendForApproval = () => {
+  const handleSendForApproval = async () => {
     if (!activeVersionId) return;
-    updateVersionInDb(activeVersionId, { status: 'Pending Approval' });
-    alert('Quotation sent for approval to the Manager.');
+    setIsSubmitting(true);
+    try {
+      await updateVersionInDb(activeVersionId, { status: 'Pending Approval' });
+      alert('✅ Quotation submitted for Manager Approval successfully!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to send quotation for approval.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (!activeVersionId) return;
-    updateVersionInDb(activeVersionId, { status: 'Approved' });
+    setIsSubmitting(true);
+    try {
+      await updateVersionInDb(activeVersionId, { status: 'Approved' });
+      alert('✅ Quotation approved successfully!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to approve quotation.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDownloadPDF = async () => {
     const element = document.getElementById('quotation-preview-container');
     if (!element) return;
     
+    setIsDownloading(true);
     try {
       const canvas = await html2canvas(element, { scale: 2 });
       const imgData = canvas.toDataURL('image/png');
@@ -317,6 +373,8 @@ export default function QuotationBuilder() {
     } catch (err) {
       console.error('Error generating PDF', err);
       alert('Error generating PDF.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -338,8 +396,9 @@ export default function QuotationBuilder() {
     } catch (error) {
       console.error(error);
       alert('Error sending email. Ensure Firebase is configured.');
+    } finally {
+      setIsEmailing(false);
     }
-    setIsEmailing(false);
   };
 
   return (
@@ -354,41 +413,53 @@ export default function QuotationBuilder() {
             Build quotes with dynamic company logo and direct walk-in customer addition
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button 
             type="button"
             onClick={() => setIsWalkinModalOpen(true)}
-            className="px-3.5 py-2 bg-emerald-600 text-white font-extrabold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-1.5 text-xs shadow-md shadow-emerald-200"
+            className="px-3.5 py-2 bg-emerald-600 text-white font-extrabold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-1.5 text-xs shadow-md shadow-emerald-200 cursor-pointer"
           >
             <UserPlus className="w-4 h-4" /> + Direct Add Walk-in Lead
           </button>
           <button 
+            type="button"
+            onClick={handleCreateNewVersion}
+            disabled={isSubmitting}
+            className="px-3.5 py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-700 transition-colors flex items-center gap-1.5 text-xs cursor-pointer disabled:opacity-50"
+          >
+            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 text-emerald-400" />}
+            <span>New Version</span>
+          </button>
+          <button 
             onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-            className="px-3.5 py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center gap-2 text-xs"
+            className="px-3.5 py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center gap-2 text-xs cursor-pointer"
           >
             <History className="w-4 h-4" /> Version History (v{activeVersion.versionNumber})
           </button>
         </div>
       </header>
 
-      {/* Version History Drawer */}
+      {/* Version History Drawer with Working Deletion */}
       {isHistoryOpen && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-2 animate-in slide-in-from-top-2">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Saved Quotation Versions</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Saved Quotation Versions</h3>
+            <span className="text-[10px] text-slate-500 font-medium">Click version to switch, or click trash to delete</span>
+          </div>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {versions.map(v => (
-              <button
+              <div
                 key={v.id}
                 onClick={() => setActiveVersionId(v.id)}
                 className={cn(
-                  "flex-shrink-0 flex flex-col items-start p-3 rounded-lg border min-w-[160px] text-left transition-all",
+                  "flex-shrink-0 flex flex-col items-start p-3 rounded-xl border min-w-[170px] text-left transition-all cursor-pointer relative group",
                   activeVersionId === v.id 
                     ? "bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm"
                     : "bg-white border-slate-200 hover:border-slate-300"
                 )}
               >
                 <div className="flex justify-between w-full mb-1">
-                  <span className="font-bold text-slate-900 text-xs">v{v.versionNumber}.0</span>
+                  <span className="font-black text-slate-900 text-xs">v{v.versionNumber}.0</span>
                   <span className={cn(
                     "text-[9px] font-bold px-2 py-0.5 rounded-full",
                     v.status === 'Draft' ? "bg-slate-100 text-slate-600" :
@@ -398,8 +469,20 @@ export default function QuotationBuilder() {
                   )}>{v.status}</span>
                 </div>
                 <span className="text-[10px] text-slate-500">{v.date}</span>
-                <span className="text-xs font-black text-emerald-700 mt-1">₹{v.totalValue?.toLocaleString()}</span>
-              </button>
+                <div className="flex items-center justify-between w-full mt-1.5">
+                  <span className="text-xs font-black text-emerald-700">₹{v.totalValue?.toLocaleString()}</span>
+                  {versions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteVersion(v.id, e)}
+                      className="p-1 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                      title="Delete this version"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -503,9 +586,9 @@ export default function QuotationBuilder() {
                 Equipment & BOQ Items
               </h3>
               <button 
+                type="button"
                 onClick={handleAddItem}
-                disabled={activeVersion.status !== 'Draft'}
-                className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 hover:bg-emerald-100 flex items-center gap-1 disabled:opacity-50"
+                className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 hover:bg-emerald-100 flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> Add Item
               </button>
@@ -517,8 +600,7 @@ export default function QuotationBuilder() {
                   <select
                     value={item.category}
                     onChange={(e) => handleUpdateItem(item.id, 'category', e.target.value as ItemCategory)}
-                    disabled={activeVersion.status !== 'Draft'}
-                    className="p-1.5 border border-slate-200 rounded-md font-bold bg-white text-slate-700 w-24 outline-none"
+                    className="p-1.5 border border-slate-200 rounded-md font-bold bg-white text-slate-700 w-24 outline-none cursor-pointer"
                   >
                     <option value="Panel">Panel</option>
                     <option value="Inverter">Inverter</option>
@@ -531,8 +613,7 @@ export default function QuotationBuilder() {
                     type="text"
                     value={item.name}
                     onChange={(e) => handleUpdateItem(item.id, 'name', e.target.value)}
-                    disabled={activeVersion.status !== 'Draft'}
-                    className="flex-1 p-1.5 border border-slate-200 rounded-md font-medium outline-none"
+                    className="flex-1 p-1.5 border border-slate-200 rounded-md font-medium outline-none bg-white"
                     placeholder="Component description"
                   />
 
@@ -540,8 +621,7 @@ export default function QuotationBuilder() {
                     type="number"
                     value={item.quantity}
                     onChange={(e) => handleUpdateItem(item.id, 'quantity', Number(e.target.value))}
-                    disabled={activeVersion.status !== 'Draft'}
-                    className="w-16 p-1.5 border border-slate-200 rounded-md font-bold text-center outline-none"
+                    className="w-16 p-1.5 border border-slate-200 rounded-md font-bold text-center outline-none bg-white"
                     placeholder="Qty"
                   />
 
@@ -549,15 +629,15 @@ export default function QuotationBuilder() {
                     type="number"
                     value={item.unitPrice}
                     onChange={(e) => handleUpdateItem(item.id, 'unitPrice', Number(e.target.value))}
-                    disabled={activeVersion.status !== 'Draft'}
-                    className="w-24 p-1.5 border border-slate-200 rounded-md font-bold text-right outline-none"
+                    className="w-24 p-1.5 border border-slate-200 rounded-md font-bold text-right outline-none bg-white"
                     placeholder="Price"
                   />
 
                   <button
+                    type="button"
                     onClick={() => handleRemoveItem(item.id)}
-                    disabled={activeVersion.status !== 'Draft'}
-                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-md disabled:opacity-50"
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                    title="Delete item"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -579,7 +659,6 @@ export default function QuotationBuilder() {
                   type="number"
                   value={activeVersion.labourCost}
                   onChange={(e) => handleUpdateCost('labourCost', Number(e.target.value))}
-                  disabled={activeVersion.status !== 'Draft'}
                   className="w-full p-2 border border-slate-200 rounded-lg text-right font-bold bg-white"
                 />
               </div>
@@ -590,7 +669,6 @@ export default function QuotationBuilder() {
                   type="number"
                   value={activeVersion.transportCost}
                   onChange={(e) => handleUpdateCost('transportCost', Number(e.target.value))}
-                  disabled={activeVersion.status !== 'Draft'}
                   className="w-full p-2 border border-slate-200 rounded-lg text-right font-bold bg-white"
                 />
               </div>
@@ -601,7 +679,6 @@ export default function QuotationBuilder() {
                   type="number"
                   value={activeVersion.discount}
                   onChange={(e) => handleUpdateCost('discount', Number(e.target.value))}
-                  disabled={activeVersion.status !== 'Draft'}
                   className="w-full p-2 border border-slate-200 rounded-lg text-right font-bold text-emerald-600 bg-white"
                 />
               </div>
@@ -613,7 +690,6 @@ export default function QuotationBuilder() {
                   type="checkbox"
                   checked={activeVersion.use7030Split || false}
                   onChange={(e) => handleUpdateCost('use7030Split' as any, e.target.checked as any)}
-                  disabled={activeVersion.status !== 'Draft'}
                   className="w-4 h-4 accent-emerald-600 rounded"
                 />
                 Use Official Solar 70:30 GST Split (70% @ 12%, 30% @ 18%)
@@ -628,18 +704,24 @@ export default function QuotationBuilder() {
               <div className="flex gap-2">
                 {activeVersion.status === 'Draft' && (
                   <button 
+                    type="button"
                     onClick={handleSendForApproval}
-                    className="px-3 py-1.5 bg-white text-emerald-800 text-xs font-extrabold rounded-lg hover:bg-emerald-50 transition-all shadow-2xs"
+                    disabled={isSubmitting}
+                    className="px-3 py-1.5 bg-white text-emerald-800 text-xs font-extrabold rounded-lg hover:bg-emerald-50 transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    Send Approval
+                    {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    <span>{isSubmitting ? 'Submitting...' : 'Send Approval'}</span>
                   </button>
                 )}
                 {activeVersion.status === 'Pending Approval' && (
                   <button 
+                    type="button"
                     onClick={handleApprove}
-                    className="px-3 py-1.5 bg-emerald-500 text-white text-xs font-extrabold rounded-lg hover:bg-emerald-400 transition-all shadow-2xs"
+                    disabled={isSubmitting}
+                    className="px-3 py-1.5 bg-emerald-500 text-white text-xs font-extrabold rounded-lg hover:bg-emerald-400 transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    Approve Quote
+                    {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    <span>{isSubmitting ? 'Approving...' : 'Approve Quote'}</span>
                   </button>
                 )}
               </div>
@@ -774,9 +856,15 @@ export default function QuotationBuilder() {
 
       {/* QUICK ADD WALK-IN CUSTOMER MODAL */}
       {isWalkinModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setIsWalkinModalOpen(false)}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-xs">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-emerald-600" /> Quick Add Walk-in Customer
@@ -784,10 +872,13 @@ export default function QuotationBuilder() {
                 <p className="text-[11px] text-slate-500 font-medium">Saves lead directly to CRM with 'Walk-in' tag</p>
               </div>
               <button 
+                type="button"
                 onClick={() => setIsWalkinModalOpen(false)} 
-                className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
               >
-                &times;
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
               </button>
             </div>
 
@@ -877,15 +968,17 @@ export default function QuotationBuilder() {
                 <button
                   type="button"
                   onClick={() => setIsWalkinModalOpen(false)}
-                  className="flex-1 px-3 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                  className="flex-1 px-3 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-3 py-2 bg-emerald-600 text-white text-xs font-extrabold rounded-xl hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200"
+                  disabled={isSubmitting}
+                  className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md shadow-emerald-200 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  Save Walk-in Lead & Select
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  <span>{isSubmitting ? 'Saving Lead...' : 'Save Walk-in Lead & Select'}</span>
                 </button>
               </div>
             </form>

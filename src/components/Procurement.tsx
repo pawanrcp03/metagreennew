@@ -20,12 +20,14 @@ import { db } from '@/src/lib/firebase';
 import { useAuth } from '@/src/context/AuthContext';
 import { useToast } from '@/src/context/ToastContext';
 
-export type ProductType = 'Panel' | 'Inverter' | 'AC/DC Cable' | 'Battery' | 'Structure' | 'Accessories';
+export type ProductType = 'Panel' | 'Inverter' | 'AC/DC Cable' | 'Battery' | 'Structure' | 'Accessories' | 'Other';
+export type POItemUnit = 'KW' | 'MW' | 'MTR' | 'TON' | 'KG' | 'PCS';
 
 export interface POItemRow {
   id: string;
   name: string;
   type: ProductType;
+  unit: POItemUnit;
   quantity: number;
   unitPrice: number;
   taxRate: number;
@@ -64,12 +66,12 @@ export default function Procurement() {
 
   const [newVendor, setNewVendor] = useState({ name: '', category: 'Solar Panels', contact: '', phone: '' });
 
-  // PO Dynamic Items Form State
+  // PO Dynamic Items Form State with Unit (MTR / KW / MW / TON / KG / PCS)
   const [selectedVendorName, setSelectedVendorName] = useState('');
   const [poItems, setPoItems] = useState<POItemRow[]>([
-    { id: '1', name: 'Solar Mono PERC Panel 550W', type: 'Panel', quantity: 20, unitPrice: 16500, taxRate: 12 },
-    { id: '2', name: 'GroWatt 5kW Solar Inverter', type: 'Inverter', quantity: 2, unitPrice: 48000, taxRate: 18 },
-    { id: '3', name: '4 sq mm Solar DC Cable 100m', type: 'AC/DC Cable', quantity: 5, unitPrice: 4200, taxRate: 18 }
+    { id: '1', name: 'Vikram Solar Mono PERC 550W Panels', type: 'Panel', unit: 'KW', quantity: 20, unitPrice: 22000, taxRate: 12 },
+    { id: '2', name: 'GroWatt 5kW On-Grid Solar Inverter', type: 'Inverter', unit: 'KW', quantity: 5, unitPrice: 9500, taxRate: 18 },
+    { id: '3', name: 'Polycab 4 sq mm Solar DC Cable Red/Black', type: 'AC/DC Cable', unit: 'MTR', quantity: 300, unitPrice: 48, taxRate: 18 }
   ]);
 
   const poTaxableSubtotal = poItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
@@ -83,7 +85,7 @@ export default function Procurement() {
     // 1. Search Query Filter
     const matchesSearch = !searchQuery || 
                           po.vendor?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          po.id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          po.id?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           po.displayId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           po.items?.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -115,7 +117,7 @@ export default function Procurement() {
   const handleAddPoItemRow = () => {
     setPoItems([
       ...poItems,
-      { id: Date.now().toString(), name: '', type: 'Panel', quantity: 1, unitPrice: 0, taxRate: 12 }
+      { id: Date.now().toString(), name: '', type: 'Panel', unit: 'KW', quantity: 10, unitPrice: 22000, taxRate: 12 }
     ]);
   };
 
@@ -180,7 +182,7 @@ export default function Procurement() {
       return;
     }
 
-    const itemsSummaryStr = poItems.map(i => `${i.quantity}x ${i.name} (${i.type}) @ ₹${i.unitPrice} (+${i.taxRate}% Tax)`).join(', ');
+    const itemsSummaryStr = poItems.map(i => `${i.quantity} ${i.unit || 'PCS'} x ${i.name} (${i.type}) @ ₹${i.unitPrice.toLocaleString('en-IN')}/${i.unit || 'Unit'} (+${i.taxRate}% GST)`).join(', ');
 
     try {
       if (editingPoId) {
@@ -218,8 +220,9 @@ export default function Procurement() {
       setEditingPoId(null);
       setSelectedVendorName('');
       setPoItems([
-        { id: '1', name: 'Solar Mono PERC Panel 550W', type: 'Panel', quantity: 20, unitPrice: 16500, taxRate: 12 },
-        { id: '2', name: 'GroWatt 5kW Solar Inverter', type: 'Inverter', quantity: 2, unitPrice: 48000, taxRate: 18 }
+        { id: '1', name: 'Vikram Solar Mono PERC 550W Panels', type: 'Panel', unit: 'KW', quantity: 20, unitPrice: 22000, taxRate: 12 },
+        { id: '2', name: 'GroWatt 5kW On-Grid Solar Inverter', type: 'Inverter', unit: 'KW', quantity: 5, unitPrice: 9500, taxRate: 18 },
+        { id: '3', name: 'Polycab 4 sq mm Solar DC Cable Red/Black', type: 'AC/DC Cable', unit: 'MTR', quantity: 300, unitPrice: 48, taxRate: 18 }
       ]);
     } catch (err) {
       console.error('Error saving PO', err);
@@ -267,7 +270,7 @@ export default function Procurement() {
       });
 
       const itemsToStock: POItemRow[] = po.poItems || [
-        { id: '1', name: po.items || 'Solar Equipment', type: 'Panel', quantity: 10, unitPrice: po.amount / 10, taxRate: 12 }
+        { id: '1', name: po.items || 'Solar Equipment', type: 'Panel', unit: 'KW', quantity: 10, unitPrice: po.amount / 10, taxRate: 12 }
       ];
 
       for (const item of itemsToStock) {
@@ -279,23 +282,30 @@ export default function Procurement() {
           const currentQty = existingDoc.data().quantity || 0;
           await updateDoc(doc(db, 'inventory', existingDoc.id), {
             quantity: currentQty + item.quantity,
+            unit: item.unit || existingDoc.data().unit || 'PCS',
+            price: item.unitPrice,
             unitPrice: item.unitPrice,
             taxRate: item.taxRate,
+            gst: item.taxRate,
             lastUpdated: serverTimestamp()
           });
         } else {
           await addDoc(collection(db, 'inventory'), {
             name: item.name,
+            type: item.type === 'AC/DC Cable' ? 'Wire' : item.type,
             category: item.type === 'Panel' ? 'Solar Panels' : 
                       item.type === 'Inverter' ? 'Inverters' : 
                       item.type === 'Battery' ? 'Batteries' : 
                       item.type === 'AC/DC Cable' ? 'Cables & Accessories' : 'Mounting Structures',
             quantity: item.quantity,
-            unit: 'Units',
+            unit: item.unit || 'PCS',
             minThreshold: 5,
             vendor: po.vendor,
+            price: item.unitPrice,
             unitPrice: item.unitPrice,
+            gst: item.taxRate,
             taxRate: item.taxRate,
+            pricingBasis: ['TON', 'KG'].includes(item.unit) ? 'Per Weight' : 'Per Unit',
             lastUpdated: serverTimestamp()
           });
         }
@@ -306,10 +316,10 @@ export default function Procurement() {
         stage: 4
       });
 
-      alert(`🎉 Stock for ${po.displayId || po.id} received and auto-added to Inventory! Vendor Tax Invoice generated.`);
+      toast.success(`Stock for ${po.displayId || po.id} received and auto-added to Inventory with units!`, 'Stock Received');
     } catch (err) {
       console.error('Error receiving stock', err);
-      alert("Failed to process stock receipt.");
+      toast.error("Failed to process stock receipt.", "Error");
     }
   };
 
@@ -406,9 +416,21 @@ export default function Procurement() {
               <h3 className="text-lg font-extrabold text-slate-900">{po.vendor}</h3>
             </div>
             
-            <p className="text-sm text-slate-600 font-medium mt-1">
-              {po.items}
-            </p>
+            {po.poItems && po.poItems.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {po.poItems.map((item: any, idx: number) => (
+                  <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold">
+                    <span className="font-black text-emerald-700">{item.quantity} {item.unit || 'PCS'}</span>
+                    <span className="truncate max-w-[200px]">{item.name || item.type}</span>
+                    <span className="text-slate-500 font-mono text-[11px]">@ ₹{Number(item.unitPrice || 0).toLocaleString('en-IN')}/{item.unit || 'Unit'}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600 font-medium mt-1">
+                {po.items}
+              </p>
+            )}
 
             <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 mt-2">
               <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5"/> Date: {po.date}</span>
@@ -535,23 +557,23 @@ export default function Procurement() {
             <Search className="w-4 h-4 absolute left-3 text-slate-400" />
             <input 
               type="text" 
-              placeholder={activeTab === 'purchase' ? "Search POs..." : "Search Vendors..."}
+              placeholder={activeTab === 'purchase' ? "Search POs..." : "Search Solar Suppliers..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 outline-none"
             />
           </div>
 
-          {/* Vendor Filter Dropdown for Admin */}
+          {/* Supplier Filter Dropdown for Admin */}
           {activeTab === 'purchase' && isGlobalAdmin && (
             <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Vendor Scope:</label>
+              <label className="text-xs font-bold text-slate-500 uppercase">Supplier Scope:</label>
               <select
                 value={vendorFilter}
                 onChange={e => setVendorFilter(e.target.value)}
                 className="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
-                <option value="ALL">All Vendors (Vendor-Wise Grouping)</option>
+                <option value="ALL">All Suppliers (Supplier-Wise Grouping)</option>
                 {vendors.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
               </select>
             </div>
@@ -563,7 +585,7 @@ export default function Procurement() {
                 onClick={() => setViewMode('grouped')}
                 className={cn("px-2.5 py-1 rounded-md transition-all", viewMode === 'grouped' ? "bg-white text-slate-900 shadow-xs" : "text-slate-500")}
               >
-                Vendor Grouped
+                Supplier Grouped
               </button>
               <button 
                 onClick={() => setViewMode('list')}
@@ -580,7 +602,7 @@ export default function Procurement() {
              onClick={() => activeTab === 'purchase' ? setIsPoModalOpen(true) : setIsVendorModalOpen(true)}
              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl transition-all flex items-center gap-2 text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
            >
-             <Plus className="w-4 h-4" /> {activeTab === 'purchase' ? '+ Create Purchase Order' : '+ Add Vendor'}
+             <Plus className="w-4 h-4" /> {activeTab === 'purchase' ? '+ Create Purchase Order' : '+ Add Solar Supplier'}
            </button>
         </div>
       </div>
@@ -686,138 +708,280 @@ export default function Procurement() {
 
       {/* CREATE PO / RFQ MODAL */}
       {isPoModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Fixed Header */}
+            <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5 text-blue-600" />
+                  <ShoppingCart className="w-5 h-5 text-emerald-600" />
                   {editingPoId ? 'Edit PO' : 'Create Purchase Order / RFQ'}
                 </h3>
-                <p className="text-xs text-slate-500 font-medium">Capture Product, Type, Qty, Unit Price & Tax Rate %</p>
+                <p className="text-xs text-slate-500 font-medium">
+                  Calculate PO items by Meter (MTR), Kilowatts (KW), Megawatts (MW), Tons (TON), KG, or Pieces (PCS)
+                </p>
               </div>
-              <button onClick={() => setIsPoModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">&times;</button>
+              <button onClick={() => setIsPoModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1 cursor-pointer">&times;</button>
             </div>
 
-            <form onSubmit={handleSubmitPo} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Registered Vendor *</label>
-                <select 
-                  required 
-                  value={selectedVendorName} 
-                  onChange={e => setSelectedVendorName(e.target.value)} 
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 outline-none"
-                >
-                  <option value="">-- Choose Vendor --</option>
-                  {vendors.map(v => <option key={v.id} value={v.name}>{v.name} ({v.category})</option>)}
-                </select>
-              </div>
-
-              {/* Items Table */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-xs font-black uppercase text-slate-800">PO Products, Quantity, Price & Tax</span>
-                  <button 
-                    type="button" 
-                    onClick={handleAddPoItemRow}
-                    className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg border border-blue-200 hover:bg-blue-100 flex items-center gap-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Product Row
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  {poItems.map((item) => {
-                    const rowTaxable = item.quantity * item.unitPrice;
-                    const rowTax = rowTaxable * (item.taxRate / 100);
-                    const rowTotal = rowTaxable + rowTax;
-                    return (
-                      <div key={item.id} className="flex flex-wrap items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                        <select
-                          value={item.type}
-                          onChange={e => handleUpdatePoItemRow(item.id, 'type', e.target.value as ProductType)}
-                          className="p-1.5 border border-slate-200 rounded-md font-bold bg-white text-slate-800 w-28 outline-none"
-                        >
-                          <option value="Panel">Panel</option>
-                          <option value="Inverter">Inverter</option>
-                          <option value="AC/DC Cable">AC/DC Cable</option>
-                          <option value="Battery">Battery</option>
-                          <option value="Structure">Structure</option>
-                          <option value="Accessories">Accessories</option>
-                        </select>
-
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={e => handleUpdatePoItemRow(item.id, 'name', e.target.value)}
-                          placeholder="Product Description"
-                          className="flex-1 min-w-[140px] p-1.5 border border-slate-200 rounded-md font-medium outline-none"
-                          required
-                        />
-
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={e => handleUpdatePoItemRow(item.id, 'quantity', Number(e.target.value))}
-                          placeholder="Qty"
-                          className="w-14 p-1.5 border border-slate-200 rounded-md font-bold text-center outline-none"
-                          required
-                        />
-
-                        <input
-                          type="number"
-                          min="0"
-                          value={item.unitPrice}
-                          onChange={e => handleUpdatePoItemRow(item.id, 'unitPrice', Number(e.target.value))}
-                          placeholder="Price (₹)"
-                          className="w-20 p-1.5 border border-slate-200 rounded-md font-bold text-right outline-none"
-                          required
-                        />
-
-                        <select
-                          value={item.taxRate}
-                          onChange={e => handleUpdatePoItemRow(item.id, 'taxRate', Number(e.target.value))}
-                          className="p-1.5 border border-slate-200 rounded-md font-bold bg-white text-slate-700 w-20 outline-none"
-                        >
-                          <option value={5}>5% Tax</option>
-                          <option value={12}>12% Tax</option>
-                          <option value={18}>18% Tax</option>
-                          <option value={28}>28% Tax</option>
-                        </select>
-
-                        <span className="w-24 text-right font-black text-slate-900">
-                          ₹{rowTotal.toLocaleString()}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => handleRemovePoItemRow(item.id)}
-                          className="p-1 text-slate-400 hover:text-red-600 rounded-md"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Total Summary Box */}
-              <div className="bg-slate-900 text-white p-4 rounded-xl flex items-center justify-between">
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleSubmitPo} className="flex-1 overflow-y-auto flex flex-col">
+              <div className="p-5 sm:p-6 space-y-4 flex-1">
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-slate-400">
-                    Taxable: ₹{poTaxableSubtotal.toLocaleString()} | Tax: ₹{poTotalTaxAmount.toLocaleString()}
-                  </p>
-                  <p className="text-xl font-black text-emerald-400">Grand Total: ₹{poGrandTotal.toLocaleString()}</p>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Registered Vendor *</label>
+                  <select 
+                    required 
+                    value={selectedVendorName} 
+                    onChange={e => setSelectedVendorName(e.target.value)} 
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 outline-none bg-white"
+                  >
+                    <option value="">-- Choose Registered Vendor --</option>
+                    {vendors.map(v => <option key={v.id} value={v.name}>{v.name} ({v.category})</option>)}
+                  </select>
                 </div>
-                <span className="text-xs font-semibold text-slate-300">Ready to save & send to Vendor</span>
+
+                {/* Items Table */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div>
+                      <span className="text-xs font-black uppercase text-slate-800">PO Items & Unit Calculations</span>
+                      <p className="text-[11px] text-slate-400 font-medium">Auto calculates Line Total = (Quantity × Unit Rate) + GST</p>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={handleAddPoItemRow}
+                      className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 hover:bg-emerald-100 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> + Add Item Row
+                    </button>
+                  </div>
+
+                  {/* Column Headers for larger screens */}
+                  <div className="hidden lg:flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-600">
+                    <div className="w-28 shrink-0">Type</div>
+                    <div className="flex-1 min-w-[140px]">Item Description</div>
+                    <div className="w-36 shrink-0">Unit</div>
+                    <div className="w-20 shrink-0 text-center">Qty</div>
+                    <div className="w-32 shrink-0 text-right">Rate (₹ / Unit)</div>
+                    <div className="w-24 shrink-0 text-center">GST %</div>
+                    <div className="w-32 shrink-0 text-right">Total (₹)</div>
+                    <div className="w-8 shrink-0 text-center"></div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {poItems.map((item) => {
+                      const rowTaxable = item.quantity * item.unitPrice;
+                      const rowTax = rowTaxable * (item.taxRate / 100);
+                      const rowTotal = rowTaxable + rowTax;
+                      return (
+                        <div key={item.id} className="p-3 bg-slate-50 hover:bg-slate-100/70 rounded-xl border border-slate-200 text-xs transition-colors space-y-2">
+                          <div className="flex flex-col lg:flex-row lg:items-center gap-2.5">
+                            {/* Type Selector */}
+                            <div className="lg:w-28 shrink-0">
+                              <label className="block lg:hidden text-[10px] font-bold text-slate-500 uppercase mb-0.5">Type</label>
+                              <select
+                                value={item.type}
+                                onChange={e => {
+                                  const newType = e.target.value as ProductType;
+                                  let defaultUnit: POItemUnit = item.unit || 'PCS';
+                                  if (newType === 'Panel' || newType === 'Inverter') defaultUnit = 'KW';
+                                  else if (newType === 'AC/DC Cable') defaultUnit = 'MTR';
+                                  else if (newType === 'Structure') defaultUnit = 'TON';
+                                  else if (newType === 'Battery') defaultUnit = 'KW';
+                                  else if (newType === 'Accessories') defaultUnit = 'PCS';
+                                  
+                                  setPoItems(poItems.map(p => p.id === item.id ? { ...p, type: newType, unit: defaultUnit } : p));
+                                }}
+                                className="w-full p-2 border border-slate-200 rounded-lg font-bold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              >
+                                <option value="Panel">Panel</option>
+                                <option value="Inverter">Inverter</option>
+                                <option value="AC/DC Cable">AC/DC Cable</option>
+                                <option value="Battery">Battery</option>
+                                <option value="Structure">Structure</option>
+                                <option value="Accessories">Accessories</option>
+                                <option value="Other">Other</option>
+                              </select>
+                            </div>
+
+                            {/* Item Name / Description */}
+                            <div className="flex-1 min-w-[140px]">
+                              <label className="block lg:hidden text-[10px] font-bold text-slate-500 uppercase mb-0.5">Description</label>
+                              <input
+                                type="text"
+                                value={item.name}
+                                onChange={e => handleUpdatePoItemRow(item.id, 'name', e.target.value)}
+                                placeholder={
+                                  item.unit === 'MTR' ? 'e.g. 4 sq mm DC Solar Cable Red' :
+                                  item.unit === 'MW' ? 'e.g. 1.5 MW Bifacial PV Array' :
+                                  item.unit === 'KW' ? 'e.g. Vikram 550W Mono PERC Panels' :
+                                  'Product Description'
+                                }
+                                className="w-full p-2 border border-slate-200 rounded-lg font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                                required
+                              />
+                            </div>
+
+                            {/* Unit Dropdown (MTR / KW / MW / TON / KG / PCS) */}
+                            <div className="lg:w-36 shrink-0">
+                              <label className="block lg:hidden text-[10px] font-bold text-slate-500 uppercase mb-0.5">Unit (Calculation Basis)</label>
+                              <select
+                                value={item.unit || 'KW'}
+                                onChange={e => handleUpdatePoItemRow(item.id, 'unit', e.target.value as POItemUnit)}
+                                className="w-full p-2 border border-emerald-300 rounded-lg font-bold bg-emerald-50 text-emerald-900 outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer text-xs"
+                              >
+                                <option value="KW">KW (Kilowatts)</option>
+                                <option value="MW">MW (Megawatts)</option>
+                                <option value="MTR">MTR (Meters)</option>
+                                <option value="TON">TON (Tons)</option>
+                                <option value="KG">KG (Kilograms)</option>
+                                <option value="PCS">PCS (Units)</option>
+                              </select>
+                            </div>
+
+                            {/* Quantity / Capacity */}
+                            <div className="lg:w-20 shrink-0">
+                              <label className="block lg:hidden text-[10px] font-bold text-slate-500 uppercase mb-0.5">Qty ({item.unit})</label>
+                              <input
+                                type="number"
+                                step="any"
+                                min="0.1"
+                                value={item.quantity || ''}
+                                onChange={e => handleUpdatePoItemRow(item.id, 'quantity', Number(e.target.value))}
+                                placeholder="Qty"
+                                className="w-full p-2 border border-slate-200 rounded-lg font-bold text-center outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                                required
+                              />
+                            </div>
+
+                            {/* Unit Rate (₹ / Unit) */}
+                            <div className="lg:w-32 shrink-0">
+                              <label className="block lg:hidden text-[10px] font-bold text-slate-500 uppercase mb-0.5">Rate (₹ / {item.unit})</label>
+                              <div className="relative flex items-center">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  value={item.unitPrice || ''}
+                                  onChange={e => handleUpdatePoItemRow(item.id, 'unitPrice', Number(e.target.value))}
+                                  placeholder={`₹ / ${item.unit}`}
+                                  className="w-full p-2 pr-10 border border-slate-200 rounded-lg font-bold text-right outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white text-xs"
+                                  required
+                                />
+                                <span className="absolute right-2 text-[10px] font-bold text-slate-400 pointer-events-none">
+                                  /{item.unit}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* GST Rate */}
+                            <div className="lg:w-24 shrink-0">
+                              <label className="block lg:hidden text-[10px] font-bold text-slate-500 uppercase mb-0.5">GST %</label>
+                              <select
+                                value={item.taxRate}
+                                onChange={e => handleUpdatePoItemRow(item.id, 'taxRate', Number(e.target.value))}
+                                className="w-full p-2 border border-slate-200 rounded-lg font-bold bg-white text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs"
+                              >
+                                <option value={5}>5% GST</option>
+                                <option value={12}>12% GST</option>
+                                <option value={18}>18% GST</option>
+                                <option value={28}>28% GST</option>
+                                <option value={0}>0% GST</option>
+                              </select>
+                            </div>
+
+                            {/* Line Total */}
+                            <div className="lg:w-32 shrink-0 text-right">
+                              <label className="block lg:hidden text-[10px] font-bold text-slate-500 uppercase mb-0.5">Total (₹)</label>
+                              <span className="block font-black text-slate-900 text-xs">
+                                ₹{Math.round(rowTotal).toLocaleString('en-IN')}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                +₹{Math.round(rowTax).toLocaleString('en-IN')} GST
+                              </span>
+                            </div>
+
+                            {/* Delete Button */}
+                            <div className="lg:w-8 shrink-0 flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePoItemRow(item.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                title="Delete Row"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Unit-Wise Live Summary Box */}
+                <div className="bg-slate-900 text-white p-4 rounded-2xl space-y-3 shadow-lg">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs border-b border-slate-800 pb-3">
+                    {/* Solar Capacity Total */}
+                    <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Solar Capacity</p>
+                      <p className="text-sm font-black text-emerald-400">
+                        {poItems.filter(i => i.unit === 'KW').reduce((s, i) => s + (Number(i.quantity) || 0), 0)} KW
+                        {poItems.some(i => i.unit === 'MW') && ` + ${poItems.filter(i => i.unit === 'MW').reduce((s, i) => s + (Number(i.quantity) || 0), 0)} MW`}
+                      </p>
+                    </div>
+
+                    {/* Total Cable / Wire Length */}
+                    <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Cable / Wire Length</p>
+                      <p className="text-sm font-black text-teal-400">
+                        {poItems.filter(i => i.unit === 'MTR').reduce((s, i) => s + (Number(i.quantity) || 0), 0)} Meters
+                      </p>
+                    </div>
+
+                    {/* Taxable Subtotal */}
+                    <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Taxable Subtotal</p>
+                      <p className="text-sm font-black text-white">
+                        ₹{Math.round(poTaxableSubtotal).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+
+                    {/* GST Total */}
+                    <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Total GST Amount</p>
+                      <p className="text-sm font-black text-amber-400">
+                        +₹{Math.round(poTotalTaxAmount).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Purchase Order Grand Total</span>
+                      <h3 className="text-2xl font-black text-emerald-400">₹{Math.round(poGrandTotal).toLocaleString('en-IN')}</h3>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-300">
+                      Calculated by Meter (MTR), KW & MW unit rates + GST
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="pt-2 flex gap-3">
-                <button type="button" onClick={() => setIsPoModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-xs cursor-pointer">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold rounded-xl transition-all text-xs shadow-md shadow-emerald-600/20 cursor-pointer">
-                  Save & Send to Vendor
+              {/* Fixed Bottom Action Dock */}
+              <div className="p-4 border-t border-slate-200 bg-slate-50 shrink-0 flex items-center justify-between gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsPoModalOpen(false)} 
+                  className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-colors text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold rounded-xl transition-all text-xs shadow-md shadow-emerald-600/20 cursor-pointer flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" /> Save & Send to Vendor
                 </button>
               </div>
             </form>

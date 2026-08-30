@@ -28,9 +28,10 @@ interface Employee {
   team: string;
   contact: string;
   status: EmployeeStatus;
-  salaryType?: 'Fixed Salary' | 'Commission Only' | 'Fixed + Commission';
-  baseSalary?: number;
-  commissionRate?: number;
+  salaryType: 'Fixed Salary' | 'Commission Only' | 'Fixed + Commission';
+  fixedSalary: number;
+  commissionType: 'Percentage' | 'Per KW';
+  commissionRate: number;
   joinedAt?: any;
 }
 
@@ -41,17 +42,25 @@ export default function HRModule() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
 
-  const [newEmployee, setNewEmployee] = useState({
+  const [newEmployee, setNewEmployee] = useState<Omit<Employee, 'id'>>({
     name: '',
     email: '',
     role: 'Survey Engineer',
     team: 'Team Alpha',
     contact: '',
     status: 'Active' as EmployeeStatus,
-    salaryType: 'Fixed Salary' as 'Fixed Salary' | 'Commission Only' | 'Fixed + Commission',
-    baseSalary: 35000,
+    salaryType: 'Fixed Salary',
+    fixedSalary: 35000,
+    commissionType: 'Percentage',
     commissionRate: 5
   });
+
+  const [assignProjectModal, setAssignProjectModal] = useState<{ isOpen: boolean; employee: Employee | null; selectedProjectId: string }>({
+    isOpen: false,
+    employee: null,
+    selectedProjectId: ''
+  });
+  const [activeProjects, setActiveProjects] = useState<any[]>([]);
 
   useEffect(() => {
     const q = query(collection(db, 'employees'), orderBy('name', 'asc'));
@@ -60,13 +69,46 @@ export default function HRModule() {
         setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
       } else {
         setEmployees([
-          { id: 'E1', name: 'Rajesh Kumar', role: 'Lead Installer', team: 'Team Alpha', contact: '+91 98765 43210', status: 'Active' },
-          { id: 'E2', name: 'Suresh Patel', role: 'Site Surveyor', team: 'Team Bravo', contact: '+91 98765 43211', status: 'Active' },
+          { id: 'E1', name: 'Rajesh Kumar', role: 'Lead Solar Installer', team: 'Team Alpha', contact: '+91 98765 43210', status: 'Active', salaryType: 'Fixed + Commission', fixedSalary: 40000, commissionType: 'Per KW', commissionRate: 1500 },
+          { id: 'E2', name: 'Suresh Patel', role: 'Site Surveyor', team: 'Team Bravo', contact: '+91 98765 43211', status: 'Active', salaryType: 'Fixed Salary', fixedSalary: 32000, commissionType: 'Percentage', commissionRate: 0 },
         ]);
       }
     });
-    return () => unsub();
+
+    const qProj = query(collection(db, 'projects'));
+    const unsubProj = onSnapshot(qProj, (snapshot) => {
+      setActiveProjects(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter((p: any) => !p.isDeleted));
+    });
+
+    return () => {
+      unsub();
+      unsubProj();
+    };
   }, []);
+
+  const handleAssignToProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignProjectModal.employee || !assignProjectModal.selectedProjectId) return;
+    const emp = assignProjectModal.employee;
+    const proj = activeProjects.find(p => p.id === assignProjectModal.selectedProjectId);
+
+    try {
+      await updateDoc(doc(db, 'projects', assignProjectModal.selectedProjectId), {
+        assignedTo: emp.name,
+        assignedToId: emp.id,
+        assignedRole: emp.role,
+        installerName: emp.name,
+        installerId: emp.id,
+        updatedAt: serverTimestamp()
+      });
+
+      alert(`✅ Successfully assigned ${emp.name} (${emp.role}) to Project: ${proj?.customerName || 'Solar Project'}!`);
+      setAssignProjectModal({ isOpen: false, employee: null, selectedProjectId: '' });
+    } catch (err) {
+      console.error('Error assigning employee to project:', err);
+      alert('Failed to assign project. Please try again.');
+    }
+  };
 
   const handleSubmitEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,10 +125,15 @@ export default function HRModule() {
       setEditingEmployeeId(null);
       setNewEmployee({
         name: '',
+        email: '',
         role: 'Survey Engineer',
         team: 'Team Alpha',
         contact: '',
-        status: 'Active'
+        status: 'Active',
+        salaryType: 'Fixed Salary',
+        fixedSalary: 35000,
+        commissionType: 'Percentage',
+        commissionRate: 5
       });
     } catch (err) {
       console.error('Error saving employee', err);
@@ -160,6 +207,7 @@ export default function HRModule() {
                   <th className="p-4">Role</th>
                   <th className="p-4">Team</th>
                   <th className="p-4">Contact</th>
+                  <th className="p-4">Compensation Structure</th>
                   <th className="p-4">Status</th>
                   <th className="p-4 text-right">Action</th>
                 </tr>
@@ -172,6 +220,16 @@ export default function HRModule() {
                     <td className="p-4 text-slate-600">{emp.team}</td>
                     <td className="p-4 text-sm text-slate-500">{emp.contact}</td>
                     <td className="p-4">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-800">
+                          {emp.salaryType === 'Fixed Salary' && `₹${(emp.fixedSalary || 35000).toLocaleString('en-IN')}/mo (Fixed)`}
+                          {emp.salaryType === 'Commission Only' && (emp.commissionType === 'Per KW' ? `₹${emp.commissionRate || 1500}/kW (Commission)` : `${emp.commissionRate || 5}% Sales Commission`)}
+                          {emp.salaryType === 'Fixed + Commission' && `₹${(emp.fixedSalary || 30000).toLocaleString('en-IN')} + ${emp.commissionType === 'Per KW' ? `₹${emp.commissionRate || 1000}/kW` : `${emp.commissionRate || 3}%`}`}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">{emp.salaryType}</span>
+                      </div>
+                    </td>
+                    <td className="p-4">
                       <span className={cn(
                         "px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border",
                         emp.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
@@ -183,26 +241,40 @@ export default function HRModule() {
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAssignProjectModal({ isOpen: true, employee: emp, selectedProjectId: activeProjects[0]?.id || '' })}
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer border border-emerald-200 shadow-2xs"
+                          title="Assign Employee directly to Solar Project / Task"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" /> Assign Project
+                        </button>
+
                         <button 
                           onClick={() => {
                             setEditingEmployeeId(emp.id);
                             setNewEmployee({
                               name: emp.name,
+                              email: emp.email || '',
                               role: emp.role,
                               team: emp.team,
                               contact: emp.contact || '',
-                              status: emp.status
+                              status: emp.status,
+                              salaryType: emp.salaryType || 'Fixed Salary',
+                              fixedSalary: emp.fixedSalary || 35000,
+                              commissionType: emp.commissionType || 'Percentage',
+                              commissionRate: emp.commissionRate || 5
                             });
                             setIsModalOpen(true);
                           }}
-                          className="p-1.5 hover:bg-blue-50 text-blue-400 hover:text-blue-600 rounded-lg transition-colors"
+                          className="p-1.5 hover:bg-blue-50 text-blue-400 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
                           title="Edit Employee"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => handleDeleteEmployee(emp.id)}
-                          className="p-1.5 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors"
+                          className="p-1.5 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
                           title="Delete Employee"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -213,7 +285,7 @@ export default function HRModule() {
                 ))}
                 {filteredEmployees.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-500">No employees found.</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-500">No employees found.</td>
                   </tr>
                 )}
               </tbody>
@@ -230,10 +302,68 @@ export default function HRModule() {
         );
       case 'payroll':
         return (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-center text-slate-500">
-            <IndianRupee className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-slate-900 mb-2">Payroll Processing</h3>
-            <p className="max-w-md mx-auto">Manage salaries, commissions, bonuses, and deductions based on attendance and performance.</p>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <IndianRupee className="w-5 h-5 text-emerald-600" /> Payroll & Commission Calculator
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">Automatic monthly compensation breakdown based on Fixed Salary and Commission (% or Per KW)</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {employees.map(emp => {
+                const fixed = emp.salaryType === 'Commission Only' ? 0 : (emp.fixedSalary || 35000);
+                // Sample simulation of 20kW installed or ₹10 Lakhs closed
+                const sampleKw = 25;
+                const sampleRevenue = 1250000;
+                let commission = 0;
+                if (emp.salaryType !== 'Fixed Salary') {
+                  if (emp.commissionType === 'Per KW') {
+                    commission = sampleKw * (emp.commissionRate || 1500);
+                  } else {
+                    commission = (sampleRevenue * (emp.commissionRate || 5)) / 100;
+                  }
+                }
+                const totalPayout = fixed + commission;
+
+                return (
+                  <div key={emp.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-black text-slate-900 text-sm">{emp.name}</h4>
+                        <p className="text-[11px] text-slate-500 font-semibold">{emp.role}</p>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
+                        {emp.salaryType}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Fixed Salary:</span>
+                        <span className="font-bold text-slate-900">₹{fixed.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>Commission Structure:</span>
+                        <span className="font-bold text-emerald-700">
+                          {emp.commissionType === 'Per KW' ? `₹${emp.commissionRate || 1500} / kW` : `${emp.commissionRate || 5}% on Sales`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>Est. Commission (25 kW):</span>
+                        <span className="font-bold text-emerald-700">+₹{commission.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-black text-slate-900">
+                        <span>Monthly Payout:</span>
+                        <span className="text-emerald-600 font-extrabold">₹{totalPayout.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
       case 'teams':
@@ -363,18 +493,136 @@ export default function HRModule() {
                   </select>
                 </div>
               </div>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase">Payroll Compensation Structure</label>
-                <select value={newEmployee.salaryType} onChange={e => setNewEmployee({...newEmployee, salaryType: e.target.value as any})} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <label className="block text-xs font-bold text-slate-700 uppercase">Payroll Compensation Structure *</label>
+                <select 
+                  value={newEmployee.salaryType} 
+                  onChange={e => setNewEmployee({...newEmployee, salaryType: e.target.value as any})} 
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none"
+                >
                   <option value="Fixed Salary">Fixed Salary (Monthly)</option>
-                  <option value="Commission Only">Payroll - Commission (% per sale)</option>
+                  <option value="Commission Only">Commission Only</option>
                   <option value="Fixed + Commission">Fixed Salary + Sales Commission</option>
                 </select>
+
+                {/* Fixed Salary Input */}
+                {(newEmployee.salaryType === 'Fixed Salary' || newEmployee.salaryType === 'Fixed + Commission') && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Fixed Monthly Salary (₹) *</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      value={newEmployee.fixedSalary || ''} 
+                      onChange={e => setNewEmployee({...newEmployee, fixedSalary: Number(e.target.value)})} 
+                      placeholder="e.g. 35000" 
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-emerald-500" 
+                    />
+                  </div>
+                )}
+
+                {/* Commission Type & Rate Inputs */}
+                {(newEmployee.salaryType === 'Commission Only' || newEmployee.salaryType === 'Fixed + Commission') && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Commission Type *</label>
+                      <select 
+                        value={newEmployee.commissionType} 
+                        onChange={e => setNewEmployee({...newEmployee, commissionType: e.target.value as 'Percentage' | 'Per KW'})} 
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-emerald-500"
+                      >
+                        <option value="Percentage">Percentage (%)</option>
+                        <option value="Per KW">Per KW (₹ / kW)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        {newEmployee.commissionType === 'Percentage' ? 'Commission Rate (%) *' : 'Rate Per KW (₹) *'}
+                      </label>
+                      <input 
+                        type="number" 
+                        step="any"
+                        min="0"
+                        value={newEmployee.commissionRate || ''} 
+                        onChange={e => setNewEmployee({...newEmployee, commissionRate: Number(e.target.value)})} 
+                        placeholder={newEmployee.commissionType === 'Percentage' ? 'e.g. 5%' : 'e.g. 1500'} 
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-emerald-500" 
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => {setIsModalOpen(false); setEditingEmployeeId(null); setNewEmployee({ name: '', role: 'Survey Engineer', team: 'Team Alpha', contact: '', status: 'Active' });}} className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors">Add Employee</button>
+                <button type="button" onClick={() => {setIsModalOpen(false); setEditingEmployeeId(null); setNewEmployee({ name: '', role: 'Survey Engineer', team: 'Team Alpha', contact: '', status: 'Active' });}} className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors cursor-pointer">Cancel</button>
+                <button type="submit" className="flex-1 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer">Save Employee</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ASSIGN EMPLOYEE TO PROJECT MODAL */}
+      {assignProjectModal.isOpen && assignProjectModal.employee && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-emerald-600" />
+                  Assign to Solar Project / Task
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  Assigning: <strong className="text-slate-800">{assignProjectModal.employee.name}</strong> ({assignProjectModal.employee.role})
+                </p>
+              </div>
+              <button 
+                onClick={() => setAssignProjectModal({ isOpen: false, employee: null, selectedProjectId: '' })} 
+                className="text-slate-400 hover:text-slate-600 font-bold p-1 cursor-pointer text-lg"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignToProject} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">Select Solar Project *</label>
+                <select
+                  required
+                  value={assignProjectModal.selectedProjectId}
+                  onChange={e => setAssignProjectModal(prev => ({ ...prev, selectedProjectId: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl font-bold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="">-- Choose Project --</option>
+                  {activeProjects.map(proj => (
+                    <option key={proj.id} value={proj.id}>
+                      {proj.customerName} ({proj.capacityKw || 3} kW - {proj.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 space-y-1">
+                <p className="font-bold text-[11px]">⚡ Direct Field Sync:</p>
+                <p className="text-[11px]">
+                  {assignProjectModal.employee.name} will be assigned as Lead Officer / Solar Installer for this project across all execution tasks.
+                </p>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAssignProjectModal({ isOpen: false, employee: null, selectedProjectId: '' })}
+                  className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!assignProjectModal.selectedProjectId}
+                  className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl transition-all shadow-md shadow-emerald-200 cursor-pointer disabled:opacity-50"
+                >
+                  Confirm Assignment
+                </button>
               </div>
             </form>
           </div>

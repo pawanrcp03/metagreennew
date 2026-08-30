@@ -4,7 +4,7 @@ import {
   AlertCircle, Users, Milestone, GitCommit, Search, Plus, ListTodo,
   AlertTriangle, Sun, Edit2, Trash2, UserCheck, Filter, ShieldCheck, Wrench,
   Star, Phone, Check, ArrowRight, IndianRupee, MessageSquare, Zap,
-  Camera, Upload, Image as ImageIcon, Eye, Sparkles, X
+  Camera, Upload, Image as ImageIcon, Eye, Sparkles, X, Package
 } from 'lucide-react';
 import { Project, ProjectTask, ProjectStatus } from '@/src/types';
 import { cn, formatCurrency } from '@/src/lib/utils';
@@ -41,7 +41,7 @@ const PIPELINE_STAGES: ProjectStatus[] = [
   'In Process',
   'Assigned Installation',
   'Installation Complete',
-  'Verification',
+  'Department Verification',
   'Net Meter Installed',
   'Subsidy Pending',
   'Subsidy Released',
@@ -49,16 +49,19 @@ const PIPELINE_STAGES: ProjectStatus[] = [
   'Customer Review'
 ];
 
-// Sample Solar Inspection & Installation Proofs
+// Sample Material, Site Before, and Site After Photos
+const SAMPLE_MATERIAL_PHOTOS = [
+  'https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1613665813446-82a78c468a1d?auto=format&fit=crop&w=800&q=80'
+];
+
 const SAMPLE_SURVEY_PHOTOS = [
   'https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1548337138-e87d889cc369?auto=format&fit=crop&w=800&q=80'
 ];
 
 const SAMPLE_INSTALLATION_PHOTOS = [
   'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1613665813446-82a78c468a1d?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1592833159057-651427780004?auto=format&fit=crop&w=800&q=80'
 ];
 
@@ -182,16 +185,33 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
   };
 
   // Add / Save Installation Proof Photos
-  const handleSaveInstallationPhotos = async (urls: string[]) => {
+  const handleSaveInstallationPhotos = async (urls: string[], installerNameInput?: string, categoryInput?: any) => {
     const existing = currentProject.installationImagesUrls || [];
     const merged = Array.from(new Set([...existing, ...urls]));
+    const installerName = installerNameInput || currentProject.assignedTo || currentProject.installerName || 'Lead Field Installer';
+    const photoCategory = categoryInput || 'Mounting Structure';
+
+    const newRecords = urls.map((u, i) => ({
+      id: `photo-${Date.now()}-${i}`,
+      url: u,
+      installerName: installerName,
+      installerId: currentProject.installerId || 'installer-1',
+      timestamp: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      category: photoCategory as any,
+      caption: `${photoCategory} inspection photo by ${installerName}`
+    }));
+
+    const existingRecords = currentProject.installerPhotos || [];
+    const updatedRecords = [...existingRecords, ...newRecords];
+
     try {
       await updateDoc(doc(db, 'projects', currentProject.id), {
         installationImagesUrls: merged,
+        installerPhotos: updatedRecords,
         installationCompletedAt: new Date().toISOString()
       });
       setPhotoModalType(null);
-      toast.success("Installation proof photos saved successfully!", "Photos Saved");
+      toast.success("Installation proof photos saved and categorized successfully!", "Photos Saved");
     } catch (err) {
       console.error("Error saving installation photos:", err);
       toast.error("Failed to save installation photos.", "Error");
@@ -213,6 +233,9 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
     try {
       const payload = {
         ...newTask,
+        assigneeName: currentProject.assignedTo || newTask.assigneeName || 'Assigned Field Officer',
+        assigneeId: currentProject.assignedToId || newTask.assigneeId || '',
+        assigneeRole: currentProject.assignedRole || newTask.requiredRole,
         projectId: currentProject.id,
         updatedAt: serverTimestamp()
       };
@@ -475,20 +498,80 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
 
       {/* TAB 2: SITE SURVEY & INSTALLATION PROOFS (MANDATORY REQUIREMENT) */}
       {activeTab === 'photos' && (
-        <div className="space-y-8 animate-in fade-in duration-300">
-          {/* SECTION 1: SITE SURVEY PHOTOS */}
+        <div className="space-y-6">
+          {/* SECTION 1: MATERIAL PHOTOS */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-black rounded-full uppercase tracking-wider">
+                  Category #1: Material & Hardware
+                </span>
+                <h3 className="text-lg font-black text-slate-900 mt-1 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-amber-600" />
+                  Material Photos ({currentProject.materialPhotos?.length || 0})
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Delivered solar panels, inverters, cables, and galvanized mounting structures on site.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    await updateDoc(doc(db, 'projects', currentProject.id), { materialPhotos: SAMPLE_MATERIAL_PHOTOS });
+                    toast.success("Sample material photos attached successfully!", "Materials Verified");
+                  }}
+                  className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Auto-Load Material Proofs
+                </button>
+                <button
+                  onClick={() => setPhotoModalType('survey')}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Upload className="w-3.5 h-3.5" /> Upload Material Photos
+                </button>
+              </div>
+            </div>
+
+            {(!currentProject.materialPhotos || currentProject.materialPhotos.length === 0) ? (
+              <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-2 bg-slate-50/50">
+                <Package className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-black text-slate-700">No Material Photos Uploaded</p>
+                <p className="text-[11px] text-slate-400 font-medium">Capture solar module barcodes, inverter dispatch crates & cable rolls.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {currentProject.materialPhotos.map((img, idx) => (
+                  <div key={idx} className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 aspect-video shadow-sm">
+                    <img src={img} alt={`Material ${idx+1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90 group-hover:opacity-100" />
+                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <button onClick={() => setPreviewImage(img)} className="p-2 bg-white/90 text-slate-900 rounded-full font-bold text-xs hover:bg-white transition-colors cursor-pointer">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-black rounded-md">
+                      Material #{idx + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 2: SITE BEFORE PHOTOS */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
                 <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                  Requirement #1: Site Survey
+                  Category #2: Pre-Installation Inspection
                 </span>
                 <h3 className="text-lg font-black text-slate-900 mt-1 flex items-center gap-2">
                   <Camera className="w-5 h-5 text-blue-600" />
-                  Site Survey & Structural Assessment Proofs ({surveyPhotoCount})
+                  Site Before Photos ({surveyPhotoCount})
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Uploaded roof assessment, shade-free area, and electrical panel inspection photos.
+                  Pre-installation rooftop structure, existing electrical DB, shade orientation & DISCOM meter.
                 </p>
               </div>
 
@@ -497,38 +580,36 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
                   onClick={() => handleSaveSurveyPhotos(SAMPLE_SURVEY_PHOTOS)}
                   className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-emerald-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Auto-Load Survey Proofs
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Auto-Load Before Proofs
                 </button>
                 <button
                   onClick={() => setPhotoModalType('survey')}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  <Upload className="w-3.5 h-3.5" /> Upload Photos
+                  <Upload className="w-3.5 h-3.5" /> Upload Site Before Photos
                 </button>
               </div>
             </div>
 
             {/* Photo Grid */}
             {surveyPhotoCount === 0 ? (
-              <div className="p-10 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-3 bg-slate-50/50">
-                <Camera className="w-10 h-10 text-slate-300 mx-auto" />
-                <div>
-                  <p className="text-xs font-black text-slate-700">No Site Survey Photos Uploaded Yet</p>
-                  <p className="text-[11px] text-slate-400 font-medium">Click "Auto-Load Survey Proofs" or upload roof angle & meter photos.</p>
-                </div>
+              <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-2 bg-slate-50/50">
+                <Camera className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-black text-slate-700">No Site Before Photos Uploaded</p>
+                <p className="text-[11px] text-slate-400 font-medium">Click "Auto-Load Before Proofs" or upload pre-construction rooftop pictures.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {currentProject.siteSurveyImagesUrls?.map((img, idx) => (
                   <div key={idx} className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 aspect-video shadow-sm">
-                    <img src={img} alt={`Survey Photo ${idx+1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90 group-hover:opacity-100" />
+                    <img src={img} alt={`Site Before ${idx+1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90 group-hover:opacity-100" />
                     <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <button onClick={() => setPreviewImage(img)} className="p-2 bg-white/90 text-slate-900 rounded-full font-bold text-xs hover:bg-white transition-colors">
+                      <button onClick={() => setPreviewImage(img)} className="p-2 bg-white/90 text-slate-900 rounded-full font-bold text-xs hover:bg-white transition-colors cursor-pointer">
                         <Eye className="w-4 h-4" />
                       </button>
                     </div>
                     <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-black rounded-md">
-                      Survey Photo #{idx + 1}
+                      Site Before #{idx + 1}
                     </span>
                   </div>
                 ))}
@@ -536,19 +617,19 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
             )}
           </div>
 
-          {/* SECTION 2: INSTALLATION COMPLETED PHOTOS */}
+          {/* SECTION 3: SITE AFTER PHOTOS */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
                 <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                  Requirement #2: Post-Installation
+                  Category #3: Post-Installation Completion
                 </span>
                 <h3 className="text-lg font-black text-slate-900 mt-1 flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  Installation Completed Verification Proofs ({installationPhotoCount})
+                  Site After Photos ({installationPhotoCount})
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Uploaded mounted panel structure, inverter wiring, earthing chamber, and net meter photos.
+                  Commissioned solar panel array, inverter setup, AC/DC safety earthing & bi-directional net meter.
                 </p>
               </div>
 
@@ -557,39 +638,61 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
                   onClick={() => handleSaveInstallationPhotos(SAMPLE_INSTALLATION_PHOTOS)}
                   className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-emerald-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Auto-Load Install Proofs
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Auto-Load After Proofs
                 </button>
                 <button
                   onClick={() => setPhotoModalType('installation')}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  <Upload className="w-3.5 h-3.5" /> Upload Photos
+                  <Upload className="w-3.5 h-3.5" /> Upload Site After Photos
                 </button>
               </div>
             </div>
 
-            {/* Photo Grid */}
+            {/* Photo Grid - Stored & Displayed Separately */}
             {installationPhotoCount === 0 ? (
-              <div className="p-10 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-3 bg-slate-50/50">
-                <CheckCircle2 className="w-10 h-10 text-slate-300 mx-auto" />
-                <div>
-                  <p className="text-xs font-black text-slate-700">No Installation Verification Photos Uploaded Yet</p>
-                  <p className="text-[11px] text-slate-400 font-medium">Click "Auto-Load Install Proofs" or upload panel mounting & wiring photos.</p>
-                </div>
+              <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-2 bg-slate-50/50">
+                <CheckCircle2 className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-black text-slate-700">No Site After Photos Uploaded</p>
+                <p className="text-[11px] text-slate-400 font-medium">Click "Auto-Load After Proofs" or upload final array & net metering photos.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {currentProject.installationImagesUrls?.map((img, idx) => (
-                  <div key={idx} className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 aspect-video shadow-sm">
-                    <img src={img} alt={`Installation Photo ${idx+1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90 group-hover:opacity-100" />
-                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <button onClick={() => setPreviewImage(img)} className="p-2 bg-white/90 text-slate-900 rounded-full font-bold text-xs hover:bg-white transition-colors">
-                        <Eye className="w-4 h-4" />
-                      </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(currentProject.installerPhotos && currentProject.installerPhotos.length > 0 
+                  ? currentProject.installerPhotos 
+                  : (currentProject.installationImagesUrls || []).map((img, idx) => ({
+                      id: `legacy-${idx}`,
+                      url: img,
+                      installerName: currentProject.assignedTo || 'Lead Solar Installer',
+                      timestamp: 'Verified Commissioned Record',
+                      category: idx === 0 ? 'Mounting Structure' : idx === 1 ? 'Panel Wiring' : 'Inverter Setup',
+                      caption: `Site After proof #${idx + 1}`
+                    }))
+                ).map((photo, idx) => (
+                  <div key={photo.id || idx} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-md group flex flex-col justify-between">
+                    <div className="relative aspect-video bg-slate-950 overflow-hidden">
+                      <img src={photo.url} alt={photo.caption || `Proof ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90 group-hover:opacity-100" />
+                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button onClick={() => setPreviewImage(photo.url)} className="p-2.5 bg-white/90 text-slate-900 rounded-full font-bold text-xs hover:bg-white transition-colors cursor-pointer shadow-lg">
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <span className="absolute top-2 left-2 px-2 py-0.5 bg-emerald-500/90 text-slate-950 text-[9px] font-black rounded-md uppercase tracking-wider backdrop-blur-xs">
+                        {photo.category || 'Site After Proof'}
+                      </span>
                     </div>
-                    <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-emerald-600 text-white text-[9px] font-black rounded-md">
-                      Install Proof #{idx + 1}
-                    </span>
+
+                    <div className="p-3 bg-slate-900 border-t border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-200 flex items-center gap-1">
+                          <Wrench className="w-3 h-3 text-emerald-400" /> {photo.installerName}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">{photo.timestamp}</span>
+                      </div>
+                      {photo.caption && (
+                        <p className="text-[10px] text-slate-400 truncate font-medium">{photo.caption}</p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -751,15 +854,16 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Assign Staff</label>
-                <select value={newTask.assigneeId} onChange={e => {
-                  const s = staffList.find(x => x.id === e.target.value);
-                  setNewTask({ ...newTask, assigneeId: e.target.value, assigneeName: s?.name || '', assigneeRole: s?.role || '' });
-                }} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20">
-                  <option value="">-- Select Team Member --</option>
-                  {staffList.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
-                </select>
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 space-y-1">
+                <span className="text-[10px] uppercase font-black text-emerald-900 tracking-wider flex items-center gap-1">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-700" /> Auto-Assigned Officer / Solar Installer
+                </span>
+                <p className="text-xs font-bold text-slate-800">
+                  {currentProject.assignedTo || 'Assigned via Employee Card in HR Module'}
+                </p>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  Employees are assigned directly from Employee Cards to keep project responsibilities in sync.
+                </p>
               </div>
 
               <div className="pt-2 flex gap-3">

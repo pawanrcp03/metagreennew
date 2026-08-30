@@ -108,8 +108,25 @@ export default function Finance() {
     amount: 0,
     type: 'Advance',
     category: 'Income',
+    expenseType: 'Material & Hardware Purchase',
     gstEnabled: false
   });
+
+  const [expenseTypes, setExpenseTypes] = useState<string[]>([
+    'Material & Hardware Purchase',
+    'Labor & Installation Wages',
+    'Logistics & Transport',
+    'DISCOM Application Fees',
+    'Marketing & Customer Acquisition',
+    'Office Rent & Utilities',
+    'Equipment Repair & Maintenance',
+    'Civil & Foundation Work',
+    'Vendor Advance Payment',
+    'Other Expenses'
+  ]);
+
+  const [isAddingNewExpenseType, setIsAddingNewExpenseType] = useState(false);
+  const [customExpenseTypeInput, setCustomExpenseTypeInput] = useState('');
 
   const [newLoan, setNewLoan] = useState({
     customer: '',
@@ -146,8 +163,33 @@ export default function Finance() {
       setLoans(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => { unsubTx(); unsubLoans(); };
+    const qExpenseTypes = query(collection(db, 'financeExpenseTypes'), orderBy('name', 'asc'));
+    const unsubExpTypes = onSnapshot(qExpenseTypes, (snapshot) => {
+      if (!snapshot.empty) {
+        const fetched = snapshot.docs.map(d => d.data().name as string);
+        setExpenseTypes(prev => Array.from(new Set([...prev, ...fetched])));
+      }
+    });
+
+    return () => { unsubTx(); unsubLoans(); unsubExpTypes(); };
   }, []);
+
+  const handleAddExpenseType = async () => {
+    if (!customExpenseTypeInput.trim()) return;
+    const trimmed = customExpenseTypeInput.trim();
+    try {
+      await addDoc(collection(db, 'financeExpenseTypes'), {
+        name: trimmed,
+        createdAt: serverTimestamp()
+      });
+      setExpenseTypes(prev => Array.from(new Set([...prev, trimmed])));
+      setNewTx(prev => ({ ...prev, expenseType: trimmed }));
+      setCustomExpenseTypeInput('');
+      setIsAddingNewExpenseType(false);
+    } catch (err) {
+      console.error('Error adding expense type:', err);
+    }
+  };
 
   const handleSubmitTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,6 +201,7 @@ export default function Finance() {
           amount: newTx.amount,
           type: newTx.type,
           category: newTx.category,
+          expenseType: newTx.category === 'Expense' ? (newTx.expenseType || 'Other Expenses') : null,
           gst: gstAmount,
         });
       } else {
@@ -169,6 +212,7 @@ export default function Finance() {
           amount: newTx.amount,
           type: newTx.type,
           category: newTx.category,
+          expenseType: newTx.category === 'Expense' ? (newTx.expenseType || 'Other Expenses') : null,
           gst: gstAmount,
           status: 'Completed',
           date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'),
@@ -177,7 +221,7 @@ export default function Finance() {
       }
       setIsTxModalOpen(false);
       setEditingTxId(null);
-      setNewTx({ customer: '', amount: 0, type: 'Advance', category: 'Income', gstEnabled: false });
+      setNewTx({ customer: '', amount: 0, type: 'Advance', category: 'Income', expenseType: 'Material & Hardware Purchase', gstEnabled: false });
     } catch (err) {
       console.error('Error saving transaction:', err);
     }
@@ -427,7 +471,14 @@ export default function Finance() {
                       <Receipt className="w-5 h-5 text-slate-400" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-slate-900">{t.customer}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-slate-900">{t.customer}</h4>
+                        {t.expenseType && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200">
+                            {t.expenseType}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-4 text-xs font-medium text-slate-500 mt-1">
                         <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t.date}</span>
                         <span className="font-bold uppercase tracking-wider">{t.displayId || t.id}</span>
@@ -605,7 +656,7 @@ export default function Finance() {
                   <label className="block text-sm font-medium text-slate-700 mb-1">Amount (₹)</label>
                   <input required type="number" min="1" value={newTx.amount || ''} onChange={e => setNewTx({...newTx, amount: Number(e.target.value)})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none" />
                 </div>
-                {newTx.category === 'Income' && (
+                {newTx.category === 'Income' ? (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Payment Type</label>
                     <select value={newTx.type} onChange={e => setNewTx({...newTx, type: e.target.value})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none">
@@ -614,6 +665,48 @@ export default function Finance() {
                       <option value="EMI">EMI</option>
                       <option value="Refund">Refund</option>
                     </select>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-slate-700">Expense Type *</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingNewExpenseType(!isAddingNewExpenseType)}
+                        className="text-[11px] font-bold text-emerald-600 hover:underline cursor-pointer"
+                      >
+                        {isAddingNewExpenseType ? 'Cancel' : '+ Add New Type'}
+                      </button>
+                    </div>
+
+                    {isAddingNewExpenseType ? (
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={customExpenseTypeInput}
+                          onChange={e => setCustomExpenseTypeInput(e.target.value)}
+                          placeholder="Enter new expense type..."
+                          className="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs outline-none focus:border-emerald-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddExpenseType}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={newTx.expenseType || expenseTypes[0]}
+                        onChange={e => setNewTx({...newTx, expenseType: e.target.value})}
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none text-xs font-bold"
+                      >
+                        {expenseTypes.map((et, idx) => (
+                          <option key={idx} value={et}>{et}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
               </div>

@@ -71,7 +71,41 @@ export default function Inventory() {
   const isInstaller = userRole === 'Installer' || userRole === 'Survey Engineer';
   const isGlobalAdmin = !isVendor && !isInstaller;
 
-  const [newItem, setNewItem] = useState({ name: '', category: 'Solar Panels', quantity: 0, unit: 'Units', minThreshold: 10, serialNumber: '', warranty: '', vendor: '' });
+  const [newItem, setNewItem] = useState<{
+    name: string;
+    type: 'Panel' | 'Wire' | 'Inverter' | 'Battery' | 'Structure' | 'Other';
+    category: string;
+    manufacturer: string;
+    description: string;
+    weight: number;
+    weightUnit: 'KG' | 'TON';
+    quantity: number;
+    unit: 'KW' | 'MW' | 'MTR' | 'TON' | 'KG' | 'PCS' | string;
+    price: number;
+    gst: number;
+    pricingBasis: 'Per Unit' | 'Per Weight';
+    minThreshold: number;
+    serialNumber: string;
+    warranty: string;
+    vendor: string;
+  }>({
+    name: '',
+    type: 'Panel',
+    category: 'Solar Panels',
+    manufacturer: 'Vikram Solar',
+    description: '',
+    weight: 0,
+    weightUnit: 'KG',
+    quantity: 0,
+    unit: 'KW',
+    price: 0,
+    gst: 18,
+    pricingBasis: 'Per Unit',
+    minThreshold: 10,
+    serialNumber: '',
+    warranty: '25 Years Performance',
+    vendor: ''
+  });
 
   useEffect(() => {
     const qCategories = query(collection(db, 'inventoryCategories'), orderBy('name', 'asc'));
@@ -101,6 +135,7 @@ export default function Inventory() {
     const matchesSearch = 
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       item.category.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (item.manufacturer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.id.toLowerCase().includes(searchTerm.toLowerCase());
 
     if (isVendor) {
@@ -136,7 +171,24 @@ export default function Inventory() {
       }
       setIsModalOpen(false);
       setEditingItemId(null);
-      setNewItem({ name: '', category: 'Solar Panels', quantity: 0, unit: 'Units', minThreshold: 10, serialNumber: '', warranty: '', vendor: '' });
+      setNewItem({
+        name: '',
+        type: 'Panel',
+        category: 'Solar Panels',
+        manufacturer: 'Vikram Solar',
+        description: '',
+        weight: 0,
+        weightUnit: 'KG',
+        quantity: 0,
+        unit: 'KW',
+        price: 0,
+        gst: 18,
+        pricingBasis: 'Per Unit',
+        minThreshold: 10,
+        serialNumber: '',
+        warranty: '25 Years Performance',
+        vendor: ''
+      });
     } catch (err) {
       console.error('Error saving inventory item:', err);
       toast.error('Failed to save inventory item.', 'Error');
@@ -412,8 +464,9 @@ export default function Inventory() {
           <table className="w-full text-left text-xs font-sans">
             <thead>
               <tr className="bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest">
-                <th className="px-6 py-4">Component SKU & Category</th>
-                <th className="px-6 py-4">Supplier / Vendor</th>
+                <th className="px-6 py-4">Component SKU & Manufacturer</th>
+                <th className="px-6 py-4">Type & Pricing Basis</th>
+                <th className="px-6 py-4">Unit Price & GST</th>
                 <th className="px-6 py-4">Current Stock</th>
                 <th className="px-6 py-4">Stock Status</th>
                 <th className="px-6 py-4 text-right">Role Actions</th>
@@ -432,12 +485,28 @@ export default function Inventory() {
                         </div>
                         <div>
                           <p className="font-black text-slate-900 text-sm">{item.name}</p>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{item.category} {item.serialNumber ? `• S/N: ${item.serialNumber}` : ''}</span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{item.manufacturer || item.vendor || 'Solar Equipment'}</span>
+                            {item.serialNumber && <span className="text-[10px] font-mono text-slate-400">• S/N: {item.serialNumber}</span>}
+                          </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-bold text-slate-700">
-                      {item.vendor || 'Vikram Solar'}
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200 w-fit">
+                          {item.type || item.category}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          {item.pricingBasis || 'Per Unit'} {item.weight ? `• ${item.weight} ${item.weightUnit || 'KG'}` : ''}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-slate-700">
+                      <div className="flex flex-col">
+                        <span className="font-black text-slate-900 text-sm">₹{(item.price || 0).toLocaleString('en-IN')} <span className="text-xs font-normal text-slate-500">/ {item.unit}</span></span>
+                        <span className="text-[10px] font-bold text-slate-400">+ GST {item.gst !== undefined ? item.gst : 18}%</span>
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -496,9 +565,17 @@ export default function Inventory() {
                                 setEditingItemId(item.id);
                                 setNewItem({
                                   name: item.name,
+                                  type: item.type || 'Panel',
                                   category: item.category,
+                                  manufacturer: item.manufacturer || item.vendor || 'Vikram Solar',
+                                  description: item.description || '',
+                                  weight: item.weight || 0,
+                                  weightUnit: (item.weightUnit as any) || 'KG',
                                   quantity: item.quantity,
-                                  unit: item.unit,
+                                  unit: (item.unit as any) || 'KW',
+                                  price: item.price || 0,
+                                  gst: item.gst !== undefined ? item.gst : 18,
+                                  pricingBasis: (item.pricingBasis as any) || 'Per Unit',
                                   minThreshold: item.minThreshold,
                                   serialNumber: item.serialNumber || '',
                                   warranty: item.warranty || '',
@@ -621,39 +698,103 @@ export default function Inventory() {
             </div>
 
             <form onSubmit={handleSubmitItem} className="p-6 space-y-4 text-xs">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Component Name *</label>
-                <input required type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Vikram 540W Mono PERC Panel" />
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Category *</label>
-                  <select value={newItem.category} onChange={e => setNewItem({...newItem, category: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500">
-                    <option value="Solar Panels">Solar Panels</option>
-                    <option value="Inverters">Inverters</option>
-                    <option value="Batteries">Batteries</option>
-                    <option value="Cables & Accessories">Cables & Accessories</option>
-                    <option value="Mounting Structures">Mounting Structures</option>
-                    <option value="Other">Other</option>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Item Type *</label>
+                  <select 
+                    value={newItem.type} 
+                    onChange={e => {
+                      const t = e.target.value as any;
+                      let defaultUnit = 'PCS';
+                      let defaultBasis = 'Per Unit';
+                      let defaultCat = 'Other';
+                      if (t === 'Panel') { defaultUnit = 'KW'; defaultBasis = 'Per Unit'; defaultCat = 'Solar Panels'; }
+                      else if (t === 'Wire') { defaultUnit = 'MTR'; defaultBasis = 'Per Unit'; defaultCat = 'Cables & Accessories'; }
+                      else if (t === 'Inverter') { defaultUnit = 'KW'; defaultBasis = 'Per Unit'; defaultCat = 'Inverters'; }
+                      else if (t === 'Structure') { defaultUnit = 'KG'; defaultBasis = 'Per Weight'; defaultCat = 'Mounting Structures'; }
+                      else if (t === 'Battery') { defaultUnit = 'KW'; defaultBasis = 'Per Unit'; defaultCat = 'Batteries'; }
+                      
+                      setNewItem({
+                        ...newItem,
+                        type: t,
+                        unit: defaultUnit,
+                        pricingBasis: defaultBasis as any,
+                        category: defaultCat
+                      });
+                    }} 
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:border-emerald-500"
+                  >
+                    <option value="Panel">Panel (Solar PV)</option>
+                    <option value="Wire">Wire (DC/AC Cables)</option>
+                    <option value="Inverter">Inverter</option>
+                    <option value="Battery">Battery Storage</option>
+                    <option value="Structure">Mounting Structure</option>
+                    <option value="Other">Other Component</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Supplier / Vendor *</label>
-                  <input type="text" value={newItem.vendor} onChange={e => setNewItem({...newItem, vendor: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Vikram Solar" />
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Component Name *</label>
+                  <input required type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Vikram 540W Mono PERC Panel" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Stock Quantity *</label>
-                  <input required type="number" min="0" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: Number(e.target.value)})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-emerald-600 outline-none focus:border-emerald-500" />
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Manufacturer *</label>
+                  <input required type="text" value={newItem.manufacturer} onChange={e => setNewItem({...newItem, manufacturer: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Vikram Solar / Polycab / Havells" />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Unit *</label>
-                  <input required type="text" value={newItem.unit} onChange={e => setNewItem({...newItem, unit: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="Units / Meters" />
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Supplier / Vendor</label>
+                  <input type="text" value={newItem.vendor} onChange={e => setNewItem({...newItem, vendor: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold outline-none focus:border-emerald-500" placeholder="e.g. Solar Hut Solutions LLP" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Product Description</label>
+                <textarea rows={2} value={newItem.description} onChange={e => setNewItem({...newItem, description: e.target.value})} className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-medium outline-none focus:border-emerald-500" placeholder="e.g. 540W Bifacial Dual Glass Half-Cut Mono PERC module with 25 yrs warranty." />
+              </div>
+
+              {/* Weight & Weight Unit */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Weight of Item</label>
+                  <div className="flex gap-2">
+                    <input type="number" min="0" step="any" value={newItem.weight || ''} onChange={e => setNewItem({...newItem, weight: Number(e.target.value)})} placeholder="e.g. 28.5" className="flex-1 px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold outline-none focus:border-emerald-500" />
+                    <select value={newItem.weightUnit} onChange={e => setNewItem({...newItem, weightUnit: e.target.value as any})} className="w-20 px-2 py-2.5 border border-slate-300 rounded-xl font-bold bg-white outline-none">
+                      <option value="KG">KG</option>
+                      <option value="TON">TON</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Pricing Basis *</label>
+                  <select value={newItem.pricingBasis} onChange={e => setNewItem({...newItem, pricingBasis: e.target.value as any})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold bg-white outline-none">
+                    <option value="Per Unit">Per Unit (e.g. per KW / MTR / PCS)</option>
+                    <option value="Per Weight">Per Weight (e.g. per KG / TON)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Unit Dropdown, Stock Quantity & Min Threshold */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Unit (Dropdown) *</label>
+                  <select value={newItem.unit} onChange={e => setNewItem({...newItem, unit: e.target.value})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold bg-white text-emerald-800 outline-none focus:border-emerald-500">
+                    <option value="KW">KW (Kilowatt)</option>
+                    <option value="MW">MW (Megawatt)</option>
+                    <option value="MTR">MTR (Meter)</option>
+                    <option value="TON">TON</option>
+                    <option value="KG">KG</option>
+                    <option value="PCS">PCS (Pieces)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Stock Quantity *</label>
+                  <input required type="number" min="0" step="any" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: Number(e.target.value)})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-emerald-600 outline-none focus:border-emerald-500" />
                 </div>
 
                 <div>
@@ -662,9 +803,28 @@ export default function Inventory() {
                 </div>
               </div>
 
+              {/* Price & GST */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Unit Price (₹) *</label>
+                  <input required type="number" min="0" step="any" value={newItem.price || ''} onChange={e => setNewItem({...newItem, price: Number(e.target.value)})} placeholder="e.g. 18000" className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-900 outline-none focus:border-emerald-500" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">GST Rate (%) *</label>
+                  <select value={newItem.gst} onChange={e => setNewItem({...newItem, gst: Number(e.target.value)})} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold bg-white outline-none focus:border-emerald-500">
+                    <option value={5}>5% (Solar Components & EPC)</option>
+                    <option value={12}>12% (Equipment Standard)</option>
+                    <option value={18}>18% (Standard GST Rate)</option>
+                    <option value={28}>28% (Luxury / High Slab)</option>
+                    <option value={0}>0% (Exempt)</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => {setIsModalOpen(false); setEditingItemId(null);}} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-black text-xs rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-600/20 hover:bg-emerald-500 transition-all">Save SKU</button>
+                <button type="submit" className="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-600/20 hover:bg-emerald-500 transition-all">Save Component SKU</button>
               </div>
             </form>
           </div>

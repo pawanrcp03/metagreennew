@@ -24,6 +24,12 @@ export interface Lead {
   roofType?: string;
   monthlyUnits?: string;
   expectedLoad?: string;
+  expectedLoadUnit?: 'KW' | 'MW';
+  maxConsumptionLimit?: number;
+  quotationGenerated?: boolean;
+  quotationId?: string;
+  quotationAmount?: number;
+  quotationDate?: string;
   propertyImagesUrls?: string[];
   roofImagesUrls?: string[];
   createdAt: any;
@@ -35,6 +41,7 @@ export type ProjectStatus =
   | 'In Process'
   | 'Assigned Installation'
   | 'Installation Complete'
+  | 'Department Verification'
   | 'Verification'
   | 'Net Meter Installed'
   | 'Subsidy Pending'
@@ -42,12 +49,33 @@ export type ProjectStatus =
   | 'Completed'
   | 'Customer Review';
 
+export interface InstallerPhotoRecord {
+  id: string;
+  url: string;
+  installerName: string;
+  installerId?: string;
+  timestamp: string;
+  category?: 'Pre-Installation' | 'Mounting Structure' | 'Panel Wiring' | 'Inverter Setup' | 'Final Commissioning';
+  caption?: string;
+}
+
+export interface SubsidyDocument {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
+  status: 'Pending' | 'Verified' | 'Rejected';
+  uploadedAt: string;
+  notes?: string;
+}
+
 export interface Project {
   id: string;
   leadId: string;
   customerName: string;
   status: ProjectStatus;
   capacityKw: number;
+  capacityUnit?: 'KW' | 'MW';
   totalCost: number;
   amountPaid: number;
   priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
@@ -61,10 +89,19 @@ export interface Project {
   vendorName?: string;
   installerId?: string;
   installerName?: string;
+  quotationGenerated?: boolean;
+  quotationId?: string;
+  quotationAmount?: number;
+  quotationDate?: string;
   rating?: number;
   review?: string;
   siteSurveyImagesUrls?: string[];
   installationImagesUrls?: string[];
+  materialPhotos?: string[];
+  siteBeforePhotos?: string[];
+  siteAfterPhotos?: string[];
+  installerPhotos?: InstallerPhotoRecord[];
+  subsidyDocuments?: SubsidyDocument[];
   siteSurveyCompletedAt?: any;
   installationCompletedAt?: any;
   history?: Array<{ stage: string; timestamp: any; note?: string }>;
@@ -94,8 +131,16 @@ export interface InventoryItem {
   id: string;
   name: string;
   category: string;
+  type?: 'Panel' | 'Wire' | 'Inverter' | 'Battery' | 'Structure' | 'Other';
+  manufacturer?: string;
+  description?: string;
+  weight?: number;
+  weightUnit?: 'KG' | 'TON';
   quantity: number;
-  unit: string;
+  unit: 'KW' | 'MW' | 'MTR' | 'TON' | 'KG' | 'PCS' | string;
+  price?: number;
+  gst?: number;
+  pricingBasis?: 'Per Unit' | 'Per Weight';
   minThreshold: number;
   serialNumber?: string;
   warranty?: string;
@@ -106,7 +151,8 @@ export interface InventoryItem {
 export interface Transaction {
   id: string;
   projectId: string;
-  type: 'Advance' | 'EMI' | 'Balance' | 'Refund';
+  type: 'Advance' | 'EMI' | 'Balance' | 'Refund' | 'Expense';
+  expenseType?: string;
   amount: number;
   status: 'Pending' | 'Completed' | 'Failed';
   date: any;
@@ -121,11 +167,13 @@ export type UserRole =
   | 'Design Engineer'
   | 'Procurement Officer'
   | 'Warehouse Manager'
+  | 'Solar Installer'
   | 'Installer'
   | 'Project Manager'
   | 'Finance Manager'
   | 'Customer Support'
   | 'Customer'
+  | 'Solar Supplier'
   | 'Vendor'
   | 'Vendor Employee'
   | 'Auditor';
@@ -145,4 +193,4 @@ export interface AuthenticatedUser {
   permissions?: RolePermissions;
 }
 
-export type ViewType = 'dashboard' | 'crm' | 'site-survey' | 'solar-design' | 'proposal' | 'quotation' | 'subsidy' | 'procurement' | 'projects' | 'inventory' | 'work-orders' | 'finance' | 'support' | 'warranty' | 'documents' | 'compliance' | 'hr' | 'vendors' | 'reports' | 'portal' | 'settings';
+export type ViewType = 'dashboard' | 'crm' | 'site-survey' | 'solar-design' | 'proposal' | 'quotation' | 'subsidy' | 'procurement' | 'projects' | 'inventory' | 'work-orders' | 'finance' | 'support' | 'warranty' | 'documents' | 'compliance' | 'hr' | 'vendors' | 'reports' | 'portal' | 'settings' | 'tax-invoice';

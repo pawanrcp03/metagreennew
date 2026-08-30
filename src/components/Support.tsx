@@ -20,16 +20,27 @@ import { cn } from '@/src/lib/utils';
 import { collection, query, onSnapshot, orderBy, addDoc, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 
-type ComplaintType = 'Low Generation' | 'Inverter Error' | 'Battery Issue' | 'Leakage' | 'Structure Damage';
+type ComplaintType = string;
 type TicketStatus = 'Open' | 'Assigned' | 'In Progress' | 'Resolved' | 'Closed';
 type SLAStatus = 'Within SLA' | 'Breached SLA' | 'Approaching SLA';
+
+const DEFAULT_CATEGORIES = [
+  'Low Generation',
+  'Inverter Error',
+  'Battery Issue',
+  'Leakage',
+  'Structure Damage',
+  'Net Meter Delay',
+  'PM Surya Ghar Subsidy Delay',
+  'Wiring & Cable Fault'
+];
 
 interface Ticket {
   id: string;
   displayId: string;
   customerName: string;
   projectId: string;
-  issueType: ComplaintType;
+  issueType: string;
   description: string;
   status: TicketStatus;
   priority: 'Low' | 'Medium' | 'High' | 'Critical';
@@ -41,6 +52,9 @@ interface Ticket {
 
 export default function Support() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<TicketStatus | 'All'>('All');
@@ -48,7 +62,7 @@ export default function Support() {
   const [newTicket, setNewTicket] = useState({
     customerName: '',
     projectId: '',
-    issueType: 'Low Generation' as ComplaintType,
+    issueType: 'Low Generation',
     description: '',
     priority: 'Medium' as 'Low' | 'Medium' | 'High' | 'Critical'
   });
@@ -65,8 +79,40 @@ export default function Support() {
     const unsub = onSnapshot(q, (snapshot) => {
       setTickets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
     });
-    return () => unsub();
+
+    const qCat = query(collection(db, 'supportTicketCategories'));
+    const unsubCat = onSnapshot(qCat, (snapshot) => {
+      if (!snapshot.empty) {
+        const fetched = snapshot.docs.map(d => d.data().name as string).filter(Boolean);
+        const combined = Array.from(new Set([...DEFAULT_CATEGORIES, ...fetched]));
+        setCategories(combined);
+      }
+    });
+
+    return () => {
+      unsub();
+      unsubCat();
+    };
   }, []);
+
+  const handleAddNewCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    const cat = newCategoryName.trim();
+    if (!categories.includes(cat)) {
+      setCategories(prev => [...prev, cat]);
+      setNewTicket(prev => ({ ...prev, issueType: cat }));
+      try {
+        await addDoc(collection(db, 'supportTicketCategories'), {
+          name: cat,
+          createdAt: serverTimestamp()
+        });
+      } catch (e) {
+        console.error('Error adding category:', e);
+      }
+    }
+    setNewCategoryName('');
+    setIsAddingCategory(false);
+  };
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -338,14 +384,45 @@ export default function Support() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Complaint Type</label>
-                  <select value={newTicket.issueType} onChange={e => setNewTicket({...newTicket, issueType: e.target.value as ComplaintType})} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none">
-                    <option value="Low Generation">Low Generation</option>
-                    <option value="Inverter Error">Inverter Error</option>
-                    <option value="Battery Issue">Battery Issue</option>
-                    <option value="Leakage">Leakage</option>
-                    <option value="Structure Damage">Structure Damage</option>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">Complaint Category *</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingCategory(!isAddingCategory)}
+                      className="text-[11px] text-emerald-600 hover:text-emerald-700 font-extrabold cursor-pointer"
+                    >
+                      {isAddingCategory ? '← Choose Category' : '+ Add Type'}
+                    </button>
+                  </div>
+
+                  {isAddingCategory ? (
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={newCategoryName}
+                        onChange={e => setNewCategoryName(e.target.value)}
+                        placeholder="e.g. Earthing Fault"
+                        className="flex-1 px-3 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddNewCategory}
+                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ) : (
+                    <select 
+                      value={newTicket.issueType} 
+                      onChange={e => setNewTicket({...newTicket, issueType: e.target.value})} 
+                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 outline-none font-semibold bg-white"
+                    >
+                      {categories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>

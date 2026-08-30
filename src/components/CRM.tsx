@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { Lead, LeadStatus } from '@/src/types';
-import { Plus, Search, Filter, MoreVertical, Mail, Phone, MapPin, Users, FileText, Edit2, Trash2, ShieldCheck, Sparkles, Building2, Loader2, Compass, LocateFixed, Box } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, Mail, Phone, MapPin, Users, FileText, Edit2, Trash2, ShieldCheck, Sparkles, Building2, Loader2, Compass, LocateFixed, Box, Sun, Zap } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '@/src/context/AuthContext';
 import Solar3DViewer from './Solar3DViewer';
@@ -24,6 +24,9 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [isSubmittingQuotation, setIsSubmittingQuotation] = useState(false);
+  const [isSubmittingAssign, setIsSubmittingAssign] = useState(false);
 
   const [showTrash, setShowTrash] = useState(false);
   const [selected3DLead, setSelected3DLead] = useState<Lead | null>(null);
@@ -141,6 +144,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
 
   const handleSubmitLead = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmittingLead(true);
     try {
       if (editingLeadId) {
         await updateDoc(doc(db, 'leads', editingLeadId), newLead);
@@ -160,6 +164,9 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       setNewLead({ name: '', email: '', phone: '', source: 'Website', address: '', city: '', district: '', state: '', pincode: '', gpsLocation: '', roofType: '', monthlyUnits: '', expectedLoad: '', electricityBillUrl: '', propertyImagesUrls: [], roofImagesUrls: [] });
     } catch (err) {
       console.error('Error saving lead:', err);
+      alert('Failed to save lead. Please check network connection.');
+    } finally {
+      setIsSubmittingLead(false);
     }
   };
 
@@ -249,15 +256,17 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
     };
   }, []);
 
-  // Filter regional officers based on lead's state/city/address location dynamically
-  const getMatchedRegionalOfficers = (lead: Lead | null) => {
+  // Location Matching Engine for Regional Officers
+  const getMatchedRegionalOfficers = (lead: Lead | null): DynamicOfficer[] => {
     if (!lead) return officers;
-    const locText = `${lead.state || ''} ${lead.district || ''} ${lead.city || ''} ${lead.address || ''}`.toLowerCase();
+    const leadState = (lead.state || '').toLowerCase().trim();
+    const leadCity = (lead.city || '').toLowerCase().trim();
+    const leadAddress = (lead.address || '').toLowerCase().trim();
 
-    const matched = officers.filter(officer => {
-      const matchState = officer.states.some(st => locText.includes(st.toLowerCase()));
-      const matchCity = officer.cities.some(ct => locText.includes(ct.toLowerCase()));
-      const matchRegion = locText.includes(officer.region.toLowerCase());
+    const matched = officers.filter(off => {
+      const matchState = off.states.some(s => leadState.includes(s.toLowerCase()) || s.toLowerCase().includes(leadState));
+      const matchCity = off.cities.some(c => leadCity.includes(c.toLowerCase()) || leadAddress.includes(c.toLowerCase()));
+      const matchRegion = off.region.toLowerCase().includes(leadState) || (leadCity && off.region.toLowerCase().includes(leadCity));
       return matchState || matchCity || matchRegion;
     });
 
@@ -277,11 +286,13 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
     e.preventDefault();
     if (!selectedLeadForApproval) return;
 
+    setIsSubmittingAssign(true);
     const assignedOfficer = officers.find(o => o.id === selectedAssigneeId) || officers[0];
+    const targetLead = selectedLeadForApproval;
 
     try {
       // 1. Dynamically update lead status to Approved with assigned regional officer details
-      await updateDoc(doc(db, 'leads', selectedLeadForApproval.id), {
+      await updateDoc(doc(db, 'leads', targetLead.id), {
         status: 'Approved',
         assignedTo: assignedOfficer.name,
         assignedToId: assignedOfficer.id,
@@ -292,17 +303,18 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       });
 
       // 2. Dynamically auto-create project assigned to regional officer with 10-stage initial pipeline
-      const capacityKw = parseFloat(selectedLeadForApproval.expectedLoad || '5') || 5;
-      const totalCost = capacityKw * 50000;
+      const rawCapacity = parseFloat(targetLead.expectedLoad || '5') || 5;
+      const capacityKw = targetLead.expectedLoadUnit === 'MW' ? rawCapacity * 1000 : rawCapacity;
+      const totalCost = capacityKw * 55000;
 
       const projectRef = await addDoc(collection(db, 'projects'), {
-        leadId: selectedLeadForApproval.id,
-        name: `${selectedLeadForApproval.name} Solar Installation`,
-        customerName: selectedLeadForApproval.name,
-        phone: selectedLeadForApproval.phone,
-        address: selectedLeadForApproval.address,
-        city: selectedLeadForApproval.city || '',
-        state: selectedLeadForApproval.state || '',
+        leadId: targetLead.id,
+        name: `${targetLead.name} Solar Installation`,
+        customerName: targetLead.name,
+        phone: targetLead.phone,
+        address: targetLead.address,
+        city: targetLead.city || '',
+        state: targetLead.state || '',
         capacityKw: capacityKw,
         totalCost: totalCost,
         amountPaid: 0,
@@ -313,7 +325,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
         status: 'Initial',
         priority: 'High',
         history: [
-          { stage: 'Initial', timestamp: new Date().toISOString(), note: `Project created from CRM Lead: ${selectedLeadForApproval.name}` }
+          { stage: 'Initial', timestamp: new Date().toISOString(), note: `Project created from CRM Lead: ${targetLead.name} and assigned to ${assignedOfficer.name}` }
         ],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -337,12 +349,36 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
         });
       }
 
-      alert(`✅ Lead approved successfully! Project created and assigned to regional officer: ${assignedOfficer.name} (${assignedOfficer.region}).`);
+      // Close assignment modal
       setIsAssignModalOpen(false);
       setSelectedLeadForApproval(null);
+
+      // Pre-calculate quotation details based on system size
+      const estGeneration = `${Math.round(capacityKw * 120)}`;
+      const estCost = `${Math.round(capacityKw * 55000)}`;
+
+      setQuotationDetails({
+        systemSize: capacityKw.toString(),
+        panelType: 'Monocrystalline',
+        inverterType: 'String Inverter',
+        totalCost: estCost,
+        estimatedGeneration: estGeneration
+      });
+      setSelectedLeadForQuotation(targetLead);
+
+      // Prompt user to generate formal Quotation after assigning
+      const wantQuotation = window.confirm(
+        `✅ Lead "${targetLead.name}" has been Approved & Assigned to ${assignedOfficer.name} (${assignedOfficer.region})!\n\nProject created in the pipeline.\n\nWould you like to generate and record the formal Sales Quotation for ${targetLead.name} now?`
+      );
+
+      if (wantQuotation) {
+        setIsQuotationModalOpen(true);
+      }
     } catch (err) {
-      console.error('Error approving and assigning lead:', err);
-      alert('Failed to approve lead. Please try again.');
+      console.error('Error assigning and approving lead:', err);
+      alert('Failed to approve and assign regional officer.');
+    } finally {
+      setIsSubmittingAssign(false);
     }
   };
 
@@ -371,9 +407,24 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
     'AMC': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   };
 
+  // Close modals on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsModalOpen(false);
+        setIsQuotationModalOpen(false);
+        setIsAssignModalOpen(false);
+        setSelected3DLead(null);
+        setEditingLeadId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
-    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+    <div className="space-y-6">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-in slide-in-from-bottom-4 duration-500">
         <div>
           <div className="flex items-center gap-2 mb-1">
             {user?.role === 'Vendor' ? (
@@ -450,7 +501,14 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                 <tr key={lead.id} className="hover:bg-emerald-50/30 transition-colors group">
                   <td className="px-6 py-5">
                     <div className="flex flex-col">
-                      <span className="font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">{lead.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">{lead.name}</span>
+                        {lead.expectedLoad && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            {lead.expectedLoad} {lead.expectedLoadUnit || 'KW'}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1 font-medium uppercase tracking-tight">
                         <MapPin className="w-3 h-3 text-slate-400" />
                         {lead.address}
@@ -576,32 +634,64 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900">{editingLeadId ? 'Edit Prospect' : 'Add New Prospect'}</h3>
-              <button onClick={() => { setIsModalOpen(false); setEditingLeadId(null); setNewLead({ name: '', email: '', phone: '', source: 'Website', address: '', city: '', district: '', state: '', pincode: '', gpsLocation: '', roofType: '', monthlyUnits: '', expectedLoad: '', electricityBillUrl: '', propertyImagesUrls: [], roofImagesUrls: [] }); }} className="text-slate-400 hover:text-slate-600">&times;</button>
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => {
+            setIsModalOpen(false);
+            setEditingLeadId(null);
+          }}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Sticky Header with prominent Close button */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0 sticky top-0 z-30 shadow-xs">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {editingLeadId ? 'Edit Prospect' : 'Add New Prospect'}
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">Capture client details, GPS rooftop coordinates & energy consumption</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => { 
+                  setIsModalOpen(false); 
+                  setEditingLeadId(null); 
+                  setNewLead({ name: '', email: '', phone: '', source: 'Website', address: '', city: '', district: '', state: '', pincode: '', gpsLocation: '', roofType: '', monthlyUnits: '', expectedLoad: '', electricityBillUrl: '', propertyImagesUrls: [], roofImagesUrls: [] }); 
+                }} 
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
+              >
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
+              </button>
             </div>
-            <form onSubmit={handleSubmitLead} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-1">Customer Information</h4>
+
+            <form onSubmit={handleSubmitLead} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-6 sm:p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="col-span-1 md:col-span-2">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-emerald-500" /> Customer Information
+                  </h4>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Full Name *</label>
                   <input
                     required
                     value={newLead.name}
                     onChange={e => setNewLead({ ...newLead, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. Rahul Sharma"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Source</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Lead Source</label>
                   <select
                     value={newLead.source}
                     onChange={e => setNewLead({ ...newLead, source: e.target.value as any })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none bg-white"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium cursor-pointer"
                   >
                     <option value="Website">Website Leads</option>
                     <option value="Facebook">Facebook Leads</option>
@@ -611,82 +701,92 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Email Address *</label>
                   <input
                     type="email"
                     required
                     value={newLead.email}
                     onChange={e => setNewLead({ ...newLead, email: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="rahul@example.com"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Phone Number *</label>
                   <input
                     required
                     value={newLead.phone}
                     onChange={e => setNewLead({ ...newLead, phone: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="+91 98765 43210"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
-                <div className="col-span-2">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mt-2 mb-2 border-b border-slate-100 pb-1">Location Details</h4>
+
+                <div className="col-span-1 md:col-span-2 pt-2">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-500" /> Location Details
+                  </h4>
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Street Address *</label>
                   <input
                     required
                     value={newLead.address}
                     onChange={e => setNewLead({ ...newLead, address: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="Plot / House No, Street, Landmark"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">City</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">City</label>
                   <input
                     value={newLead.city || ''}
                     onChange={e => setNewLead({ ...newLead, city: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. Pune"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">District</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">District</label>
                   <input
                     value={newLead.district || ''}
                     onChange={e => setNewLead({ ...newLead, district: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. Pune"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">State</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">State</label>
                   <input
                     value={newLead.state || ''}
                     onChange={e => setNewLead({ ...newLead, state: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. Maharashtra"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Pincode</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Pincode</label>
                   <input
                     value={newLead.pincode || ''}
                     onChange={e => setNewLead({ ...newLead, pincode: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. 411001"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">GPS Location (Lat, Long)</label>
-                  <div className="flex gap-2">
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">GPS Location (Lat, Long)</label>
+                  <div className="flex flex-col sm:flex-row gap-2.5">
                     <input
                       value={newLead.gpsLocation}
                       onChange={e => setNewLead({ ...newLead, gpsLocation: e.target.value })}
-                      placeholder="e.g. 34.0522, -118.2437"
-                      className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                      placeholder="e.g. 18.5204, 73.8567"
+                      className="flex-1 px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium"
                     />
                     <button
                       type="button"
                       onClick={handleDropPinGPS}
                       disabled={isDetectingLocation}
-                      className="whitespace-nowrap px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-lg transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                      className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
                       title="Auto-detect current GPS location and reverse-geocode full street address, city, district, state & pincode"
                     >
                       {isDetectingLocation ? (
@@ -701,165 +801,195 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                     </button>
                   </div>
                 </div>
-                <div className="col-span-2">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mt-2 mb-2 border-b border-slate-100 pb-1">Energy Requirements</h4>
+
+                <div className="col-span-1 md:col-span-2 pt-2">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                    <Sun className="w-3.5 h-3.5 text-emerald-500" /> Energy Requirements
+                  </h4>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Roof Type</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Roof Type</label>
                   <select
                     value={newLead.roofType}
                     onChange={e => setNewLead({ ...newLead, roofType: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none appearance-none"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium cursor-pointer"
                   >
                     <option value="">Select Roof Type...</option>
-                    <option value="RCC">RCC (Flat)</option>
-                    <option value="Tin Shed">Tin Shed</option>
-                    <option value="Tiled">Tiled</option>
-                    <option value="Asbestos">Asbestos</option>
+                    <option value="RCC">RCC (Flat Roof)</option>
+                    <option value="Tin Shed">Industrial Tin Shed</option>
+                    <option value="Tiled">Tiled Roof</option>
+                    <option value="Asbestos">Asbestos Sheet</option>
                   </select>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Expected Load (kW/Mg)</label>
-                  <input
-                    type="number"
-                    value={newLead.expectedLoad}
-                    onChange={e => setNewLead({ ...newLead, expectedLoad: e.target.value })}
-                    placeholder="e.g. 5"
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                  />
-                </div>
-                {/* Monthly Electricity Units Range (e.g. 300-400 Units) */}
-                <div className="col-span-2 space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Monthly Electricity Units Range (kWh)
-                    </label>
-                    <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black rounded-lg border border-emerald-200">
-                      {newLead.monthlyUnits || '300-400'} Units / mo
-                    </span>
-                  </div>
-
-                  {/* Range Quick Preset Buttons */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      '100-300',
-                      '300-400',
-                      '400-600',
-                      '600-800',
-                      '800-1200',
-                      '1200-2000',
-                      '2000+'
-                    ].map(preset => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setNewLead({ ...newLead, monthlyUnits: preset })}
-                        className={cn(
-                          "px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer",
-                          newLead.monthlyUnits === preset
-                            ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
-                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
-                        )}
-                      >
-                        {preset} Units
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Range From & Range To Input Boxes */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-                      <span className="text-xs font-bold text-slate-400 uppercase">From:</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="10000"
-                        step="10"
-                        value={
-                          newLead.monthlyUnits && newLead.monthlyUnits.includes('-')
-                            ? newLead.monthlyUnits.split('-')[0]
-                            : newLead.monthlyUnits || ''
-                        }
-                        onChange={e => {
-                          const fromVal = e.target.value;
-                          const currentTo = newLead.monthlyUnits && newLead.monthlyUnits.includes('-')
-                            ? newLead.monthlyUnits.split('-')[1]
-                            : '400';
-                          setNewLead({ ...newLead, monthlyUnits: `${fromVal}-${currentTo}` });
-                        }}
-                        placeholder="300"
-                        className="w-full text-xs font-bold text-slate-800 outline-none"
-                      />
-                      <span className="text-[10px] font-bold text-slate-400">kWh</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-                      <span className="text-xs font-bold text-slate-400 uppercase">To:</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="10000"
-                        step="10"
-                        value={
-                          newLead.monthlyUnits && newLead.monthlyUnits.includes('-')
-                            ? newLead.monthlyUnits.split('-')[1]
-                            : ''
-                        }
-                        onChange={e => {
-                          const toVal = e.target.value;
-                          const currentFrom = newLead.monthlyUnits && newLead.monthlyUnits.includes('-')
-                            ? newLead.monthlyUnits.split('-')[0]
-                            : '300';
-                          setNewLead({ ...newLead, monthlyUnits: `${currentFrom}-${toVal}` });
-                        }}
-                        placeholder="400"
-                        className="w-full text-xs font-bold text-slate-800 outline-none"
-                      />
-                      <span className="text-[10px] font-bold text-slate-400">kWh</span>
-                    </div>
-                  </div>
-
-                  {/* Interactive Visual Range Bar Slider */}
-                  <div className="space-y-1 pt-1">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Expected System Capacity *</label>
+                  <div className="flex gap-2">
                     <input
-                      type="range"
-                      min="0"
-                      max="3000"
-                      step="25"
-                      value={
-                        newLead.monthlyUnits && newLead.monthlyUnits.includes('-')
-                          ? parseInt(newLead.monthlyUnits.split('-')[1]) || 400
-                          : parseInt(newLead.monthlyUnits || '0') || 0
-                      }
-                      onChange={e => {
-                        const toVal = parseInt(e.target.value);
-                        const fromVal = Math.max(0, toVal - 100);
-                        setNewLead({ ...newLead, monthlyUnits: `${fromVal}-${toVal}` });
-                      }}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                      required
+                      type="number"
+                      step="any"
+                      min="0.1"
+                      value={newLead.expectedLoad || ''}
+                      onChange={e => setNewLead({ ...newLead, expectedLoad: e.target.value })}
+                      placeholder="e.g. 5"
+                      className="flex-1 px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none font-black text-slate-800 text-sm"
                     />
-                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                      <span>0 Units</span>
-                      <span>750 Units</span>
-                      <span>1500 Units</span>
-                      <span>2250 Units</span>
-                      <span>3000+ Units</span>
-                    </div>
+                    <select
+                      value={newLead.expectedLoadUnit || 'KW'}
+                      onChange={e => setNewLead({ ...newLead, expectedLoadUnit: e.target.value as 'KW' | 'MW' })}
+                      className="w-24 px-3 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none font-black text-slate-800 text-sm cursor-pointer"
+                    >
+                      <option value="KW">KW</option>
+                      <option value="MW">MW</option>
+                    </select>
                   </div>
                 </div>
-                <div className="col-span-2">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mt-2 mb-2 border-b border-slate-100 pb-1">Documents & Media</h4>
+
+                {/* Infinite Monthly Electricity Units Range System */}
+                {(() => {
+                  const getParsedUnits = () => {
+                    if (!newLead.monthlyUnits) return { from: 300, to: 400 };
+                    if (newLead.monthlyUnits.includes('-')) {
+                      const parts = newLead.monthlyUnits.split('-');
+                      return {
+                        from: parseInt(parts[0]) || 0,
+                        to: parseInt(parts[1]) || (parseInt(parts[0]) || 0) + 100
+                      };
+                    }
+                    const val = parseInt(newLead.monthlyUnits) || 400;
+                    return { from: Math.max(0, val - 100), to: val };
+                  };
+
+                  const { from: currentFrom, to: currentTo } = getParsedUnits();
+                  // Infinite Dynamic Scaling Slider: automatically expands to accommodate any scale from 0 to 1,000,000+
+                  const dynamicSliderMax = Math.max(5000, Math.ceil((Math.max(currentTo, currentFrom) * 1.5) / 1000) * 1000);
+                  const dynamicStep = Math.max(25, Math.pow(10, Math.max(1, Math.floor(Math.log10(dynamicSliderMax / 100)))));
+
+                  return (
+                    <div className="col-span-1 md:col-span-2 space-y-3.5 bg-slate-50 p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                            ⚡ Monthly Electricity Units Range (kWh)
+                          </label>
+                          <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                            Supports Infinite Scale (Residential, Commercial & Mega Industrial Plants)
+                          </p>
+                        </div>
+                        <span className="px-3 py-1.5 bg-emerald-500/15 text-emerald-800 text-xs font-black rounded-xl border border-emerald-500/30 shadow-xs">
+                          {currentFrom.toLocaleString()} - {currentTo.toLocaleString()} kWh / mo
+                        </span>
+                      </div>
+
+                      {/* Infinite Range Quick Presets */}
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {[
+                          '100-300',
+                          '300-500',
+                          '500-1000',
+                          '1000-2500',
+                          '2500-5000',
+                          '5000-10000',
+                          '10000-25000',
+                          '25000-50000',
+                          '50000-100000',
+                          '100000+'
+                        ].map(preset => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setNewLead({ ...newLead, monthlyUnits: preset })}
+                            className={cn(
+                              "px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer",
+                              newLead.monthlyUnits === preset
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                            )}
+                          >
+                            {preset} Units
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Unbounded Direct Numeric Range Inputs */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div className="flex items-center gap-2 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-2xs focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+                          <span className="text-xs font-black text-slate-400 uppercase">From:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={currentFrom || ''}
+                            onChange={e => {
+                              const fromVal = Math.max(0, Number(e.target.value) || 0).toString();
+                              setNewLead({ ...newLead, monthlyUnits: `${fromVal}-${currentTo}` });
+                            }}
+                            placeholder="300"
+                            className="w-full text-xs font-black text-slate-800 outline-none"
+                          />
+                          <span className="text-[10px] font-bold text-slate-400">kWh</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-2xs focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+                          <span className="text-xs font-black text-slate-400 uppercase">To:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={currentTo || ''}
+                            onChange={e => {
+                              const toVal = Math.max(0, Number(e.target.value) || 0).toString();
+                              setNewLead({ ...newLead, monthlyUnits: `${currentFrom}-${toVal}` });
+                            }}
+                            placeholder="500"
+                            className="w-full text-xs font-black text-slate-800 outline-none"
+                          />
+                          <span className="text-[10px] font-bold text-slate-400">kWh</span>
+                        </div>
+                      </div>
+
+                      {/* Infinite Dynamic Range Bar Slider */}
+                      <div className="space-y-1.5 pt-1">
+                        <input
+                          type="range"
+                          min="0"
+                          max={dynamicSliderMax}
+                          step={dynamicStep}
+                          value={currentTo}
+                          onChange={e => {
+                            const toVal = parseInt(e.target.value) || 0;
+                            const fromVal = Math.max(0, Math.round(toVal * 0.75));
+                            setNewLead({ ...newLead, monthlyUnits: `${fromVal}-${toVal}` });
+                          }}
+                          className="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                        />
+                        <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                          <span>0 Units</span>
+                          <span>{Math.round(dynamicSliderMax * 0.25).toLocaleString()} Units</span>
+                          <span>{Math.round(dynamicSliderMax * 0.5).toLocaleString()} Units</span>
+                          <span>{Math.round(dynamicSliderMax * 0.75).toLocaleString()} Units</span>
+                          <span className="text-emerald-700 font-black">{dynamicSliderMax.toLocaleString()}+ Units (Infinite ⚡)</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="col-span-1 md:col-span-2 pt-2">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-emerald-500" /> Documents & Site Media
+                  </h4>
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Electricity Bill Upload</label>
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Electricity Bill Upload</label>
                   <input
                     type="file"
                     onChange={e => setNewLead({ ...newLead, electricityBillUrl: e.target.files?.[0]?.name || '' })}
-                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 file:cursor-pointer cursor-pointer border border-slate-200 rounded-xl p-1 bg-slate-50/50"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Property Images</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Property Images</label>
                   <input
                     type="file"
                     multiple
@@ -867,11 +997,11 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                       const files = Array.from(e.target.files || []) as File[];
                       setNewLead({ ...newLead, propertyImagesUrls: files.map(f => f.name) });
                     }}
-                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 file:cursor-pointer cursor-pointer border border-slate-200 rounded-xl p-1 bg-slate-50/50"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Roof Images</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Roof Images</label>
                   <input
                     type="file"
                     multiple
@@ -879,40 +1009,71 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                       const files = Array.from(e.target.files || []) as File[];
                       setNewLead({ ...newLead, roofImagesUrls: files.map(f => f.name) });
                     }}
-                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 file:cursor-pointer cursor-pointer border border-slate-200 rounded-xl p-1 bg-slate-50/50"
                   />
                 </div>
               </div>
-              <div className="pt-4 flex gap-3">
+
+              {/* Sticky Bottom Form Action Buttons */}
+              <div className="pt-4 flex gap-3 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingLeadId(null);
+                  }}
+                  className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-colors cursor-pointer text-sm"
                 >
-                  Cancel
+                  Cancel / Close
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200"
+                  disabled={isSubmittingLead}
+                  className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black transition-all shadow-lg shadow-emerald-600/20 cursor-pointer text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  Create Lead
+                  {isSubmittingLead ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  <span>{isSubmittingLead ? (editingLeadId ? 'Updating...' : 'Creating...') : (editingLeadId ? 'Update Prospect' : 'Create Lead & Pipeline')}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* GENERATE QUOTATION MODAL */}
       {isQuotationModalOpen && selectedLeadForQuotation && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900">Generate Quotation</h3>
-              <button onClick={() => setIsQuotationModalOpen(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setIsQuotationModalOpen(false)}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0 sticky top-0 z-30 shadow-xs">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Generate Quotation
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">Creating estimate for {selectedLeadForQuotation.name}</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsQuotationModalOpen(false)} 
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
+              >
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
+              </button>
             </div>
+
             <form onSubmit={async (e) => {
               e.preventDefault();
+              setIsSubmittingQuotation(true);
               try {
-                await addDoc(collection(db, 'quotations'), {
+                const quoteRef = await addDoc(collection(db, 'quotations'), {
                   leadId: selectedLeadForQuotation.id,
                   leadName: selectedLeadForQuotation.name,
                   systemSize: quotationDetails.systemSize,
@@ -922,8 +1083,18 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                   estimatedGeneration: quotationDetails.estimatedGeneration,
                   createdAt: serverTimestamp()
                 });
-                updateLeadStatus(selectedLeadForQuotation.id, 'Proposal', selectedLeadForQuotation);
-                alert(`Quotation for ${selectedLeadForQuotation.name} generated and saved successfully!`);
+
+                // Update lead in Firestore with quotation details
+                await updateDoc(doc(db, 'leads', selectedLeadForQuotation.id), {
+                  quotationGenerated: true,
+                  quotationId: quoteRef.id,
+                  quotationSystemSize: quotationDetails.systemSize,
+                  quotationTotalCost: quotationDetails.totalCost,
+                  status: selectedLeadForQuotation.status === 'Approved' ? 'Approved' : 'Proposal',
+                  updatedAt: serverTimestamp()
+                });
+
+                alert(`✅ Quotation for "${selectedLeadForQuotation.name}" (${quotationDetails.systemSize} kW, ₹${Number(quotationDetails.totalCost || 0).toLocaleString()}) generated and saved successfully!`);
                 setIsQuotationModalOpen(false);
                 setQuotationDetails({
                   systemSize: '',
@@ -934,19 +1105,17 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                 });
               } catch (err) {
                 console.error('Error saving quotation:', err);
-                alert('Failed to save quotation');
+                alert('Failed to save quotation. Please check network connection.');
+              } finally {
+                setIsSubmittingQuotation(false);
               }
-            }} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              <div className="mb-4">
-                <p className="text-sm text-slate-500 font-medium">Creating quotation for:</p>
-                <p className="text-lg font-bold text-slate-900">{selectedLeadForQuotation.name}</p>
-              </div>
+            }} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
               <div className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-sm font-medium text-slate-700">System Size (kW)</label>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">System Size (kW)</label>
                     <div className="flex gap-2">
-                      {[3, 5, 10].map(size => (
+                      {[3, 5, 10, 25, 50].map(size => (
                         <button
                           key={size}
                           type="button"
@@ -960,7 +1129,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                               totalCost: estCost
                             });
                           }}
-                          className="px-2 py-0.5 text-xs font-bold bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 rounded border border-slate-200 transition-colors"
+                          className="px-2 py-0.5 text-xs font-bold bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 rounded-lg border border-slate-200 transition-colors cursor-pointer"
                         >
                           {size}kW
                         </button>
@@ -983,69 +1152,76 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                       });
                     }}
                     placeholder="e.g. 5"
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-bold"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Panel Type</label>
-                  <select
-                    value={quotationDetails.panelType}
-                    onChange={e => setQuotationDetails({ ...quotationDetails, panelType: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none bg-white"
-                  >
-                    <option>Monocrystalline</option>
-                    <option>Polycrystalline</option>
-                    <option>Thin Film</option>
-                  </select>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Panel Type</label>
+                    <select
+                      value={quotationDetails.panelType}
+                      onChange={e => setQuotationDetails({ ...quotationDetails, panelType: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm bg-white"
+                    >
+                      <option value="Monocrystalline">Monocrystalline (High Eff.)</option>
+                      <option value="Polycrystalline">Polycrystalline (Standard)</option>
+                      <option value="Bifacial">Bifacial (Dual Sided)</option>
+                      <option value="TopCon">TopCon NextGen</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Inverter Type</label>
+                    <select
+                      value={quotationDetails.inverterType}
+                      onChange={e => setQuotationDetails({ ...quotationDetails, inverterType: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm bg-white"
+                    >
+                      <option value="String Inverter">String Inverter (Grid-Tied)</option>
+                      <option value="Microinverter">Microinverter (Modular)</option>
+                      <option value="Hybrid Inverter">Hybrid Inverter (Battery Ready)</option>
+                    </select>
+                  </div>
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Inverter Type</label>
-                  <select
-                    value={quotationDetails.inverterType}
-                    onChange={e => setQuotationDetails({ ...quotationDetails, inverterType: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none bg-white"
-                  >
-                    <option>String Inverter</option>
-                    <option>Microinverter</option>
-                    <option>Hybrid Inverter</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Total Cost (₹)</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Estimated Cost (INR)</label>
                   <input
-                    required
                     type="number"
                     value={quotationDetails.totalCost}
                     onChange={e => setQuotationDetails({ ...quotationDetails, totalCost: e.target.value })}
-                    placeholder="e.g. 450000"
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. 300000"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-bold text-emerald-600"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Monthly Generation (Units)</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Estimated Monthly Units (kWh)</label>
                   <input
-                    required
                     type="number"
                     value={quotationDetails.estimatedGeneration}
                     onChange={e => setQuotationDetails({ ...quotationDetails, estimatedGeneration: e.target.value })}
                     placeholder="e.g. 600"
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-bold"
                   />
                 </div>
               </div>
-              <div className="pt-4 flex gap-3">
+
+              <div className="pt-4 flex gap-3 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsQuotationModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-colors text-xs cursor-pointer"
                 >
-                  Cancel
+                  Cancel / Close
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2"
+                  disabled={isSubmittingQuotation}
+                  className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
                 >
-                  <FileText className="w-4 h-4" /> Generate
+                  {isSubmittingQuotation ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  <span>{isSubmittingQuotation ? 'Saving Quotation...' : 'Save Quotation'}</span>
                 </button>
               </div>
             </form>
@@ -1055,9 +1231,15 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
 
       {/* Approval & Location-Based Regional Officer Assignment Modal */}
       {isAssignModalOpen && selectedLeadForApproval && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
-            <div className="p-5 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
+        <div 
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setIsAssignModalOpen(false)}
+        >
+          <div 
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-xs">
               <div>
                 <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1068,14 +1250,17 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsAssignModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-500 text-red-600 hover:text-white font-black text-xs transition-all shadow-xs border border-red-200 hover:border-red-500 cursor-pointer shrink-0"
+                title="Close Form (ESC)"
               >
-                &times;
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
               </button>
             </div>
 
-            <form onSubmit={confirmApprovalAndAssignment} className="p-6 space-y-4">
+            <form onSubmit={confirmApprovalAndAssignment} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
               {/* Customer & Location Card */}
               <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100 space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -1083,7 +1268,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                     {selectedLeadForApproval.name}
                   </span>
                   <span className="text-[10px] font-extrabold bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-md">
-                    {selectedLeadForApproval.expectedLoad || '5'} kW Solar
+                    {selectedLeadForApproval.expectedLoad || '5'} {selectedLeadForApproval.expectedLoadUnit || 'KW'} Solar
                   </span>
                 </div>
                 <div className="flex items-start gap-1.5 text-xs text-slate-600 font-medium">
@@ -1096,36 +1281,59 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                 </div>
               </div>
 
-              {/* Matched Region Badge */}
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Assign To (Location Matched)
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowAllOfficers(!showAllOfficers)}
-                  className="text-[10px] font-bold text-blue-600 hover:underline"
-                >
-                  {showAllOfficers ? 'Filter By Region' : 'Show All Officers'}
-                </button>
-              </div>
-
-              {/* Officer Selection Dropdown */}
+              {/* Regional Officer Selector */}
               <div>
-                <select
-                  required
-                  value={selectedAssigneeId}
-                  onChange={(e) => setSelectedAssigneeId(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none bg-white text-slate-800"
-                >
-                  {(showAllOfficers ? officers : getMatchedRegionalOfficers(selectedLeadForApproval)).map((officer) => (
-                    <option key={officer.id} value={officer.id}>
-                      👤 {officer.name} — {officer.role} ({officer.region})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Recommended Regional Officer
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllOfficers(!showAllOfficers)}
+                    className="text-[11px] font-bold text-emerald-600 hover:underline cursor-pointer"
+                  >
+                    {showAllOfficers ? 'Show Matched Only' : 'Show All Officers'}
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {(showAllOfficers ? officers : getMatchedRegionalOfficers(selectedLeadForApproval)).map(officer => {
+                    const isSelected = selectedAssigneeId === officer.id;
+                    return (
+                      <div
+                        key={officer.id}
+                        onClick={() => setSelectedAssigneeId(officer.id)}
+                        className={cn(
+                          "p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between",
+                          isSelected
+                            ? "bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20"
+                            : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-xs text-slate-900">{officer.name}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">
+                              {officer.role}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                            📍 {officer.region} | 📞 {officer.contact}
+                          </p>
+                        </div>
+                        <input
+                          type="radio"
+                          name="officerSelect"
+                          checked={isSelected}
+                          onChange={() => setSelectedAssigneeId(officer.id)}
+                          className="w-4 h-4 accent-emerald-600"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
                 <p className="text-[10px] text-slate-400 font-medium mt-1">
-                  📍 Filtered automatically by prospect state ({selectedLeadForApproval.state || 'local region'})
+                  Matched based on prospect state ({selectedLeadForApproval.state || 'N/A'}) & city
                 </p>
               </div>
 
@@ -1144,19 +1352,21 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
               </div>
 
               {/* Modal Buttons */}
-              <div className="pt-3 flex gap-3">
+              <div className="pt-3 flex gap-3 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAssignModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors"
+                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
                 >
-                  Cancel
+                  Cancel / Close
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5"
+                  disabled={isSubmittingAssign}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  <span>Confirm Approval & Assign</span>
+                  {isSubmittingAssign ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  <span>{isSubmittingAssign ? 'Assigning & Approving...' : 'Confirm Approval & Assign'}</span>
                 </button>
               </div>
             </form>
@@ -1166,22 +1376,38 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
 
       {/* 3D ROOFTOP SOLAR VIEW MODAL */}
       {selected3DLead && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200">
-            <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center text-white">
+        <div 
+          className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          onClick={() => setSelected3DLead(null)}
+        >
+          <div 
+            className="relative bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center text-white shrink-0 sticky top-0 z-30 shadow-xs">
               <div>
                 <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">GPS 3D CAD Rooftop Simulation</span>
-                <h3 className="text-xl font-black flex items-center gap-2">
-                  <Box className="w-5 h-5 text-emerald-400" /> 3D Rooftop Solar View — {selected3DLead.name}
+                <h3 className="text-base font-black flex items-center gap-2">
+                  <Sun className="w-4 h-4 text-amber-400" /> {selected3DLead.name} Rooftop Solar Layout
                 </h3>
               </div>
-              <button onClick={() => setSelected3DLead(null)} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors text-xl font-bold">&times;</button>
+              <button
+                type="button"
+                onClick={() => setSelected3DLead(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500 text-red-300 hover:text-white font-black text-xs transition-all shadow-xs border border-red-500/30 cursor-pointer shrink-0"
+                title="Close 3D View (ESC)"
+              >
+                <span className="text-sm font-black">✕</span>
+                <span>Close</span>
+              </button>
             </div>
-            <div className="p-4">
-              <Solar3DViewer 
+            <div className="flex-1 min-h-[450px] p-2 overflow-hidden">
+              <Solar3DViewer
+                roofType={selected3DLead.roofType || 'Flat Concrete'}
+                address={selected3DLead.address ? `${selected3DLead.address}, ${selected3DLead.city || ''}` : selected3DLead.name}
+                panelCount={selected3DLead.expectedLoad ? Math.max(4, Math.round(Number(selected3DLead.expectedLoad) * 2.5)) : 12}
                 lat={selected3DLead.gpsLocation && selected3DLead.gpsLocation.includes(',') ? parseFloat(selected3DLead.gpsLocation.split(',')[0]) : 17.3850}
                 lng={selected3DLead.gpsLocation && selected3DLead.gpsLocation.includes(',') ? parseFloat(selected3DLead.gpsLocation.split(',')[1]) : 78.4867}
-                address={selected3DLead.address ? `${selected3DLead.address}, ${selected3DLead.city || ''}` : selected3DLead.name}
               />
             </div>
           </div>

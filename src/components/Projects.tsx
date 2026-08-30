@@ -44,7 +44,7 @@ const PIPELINE_STAGES: ProjectStatus[] = [
   'In Process',
   'Assigned Installation',
   'Installation Complete',
-  'Verification',
+  'Department Verification',
   'Net Meter Installed',
   'Subsidy Pending',
   'Subsidy Released',
@@ -52,9 +52,24 @@ const PIPELINE_STAGES: ProjectStatus[] = [
   'Customer Review'
 ];
 
+export const STAGE_COLOR_MAP: Record<string, { bg: string; text: string; border: string; accent: string; headerBg: string }> = {
+  'Initial': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-300', accent: 'bg-slate-500', headerBg: 'bg-slate-800' },
+  'In Process': { bg: 'bg-sky-50', text: 'text-sky-800', border: 'border-sky-300', accent: 'bg-sky-500', headerBg: 'bg-sky-700' },
+  'Assigned Installation': { bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-300', accent: 'bg-indigo-500', headerBg: 'bg-indigo-700' },
+  'Installation Complete': { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-300', accent: 'bg-cyan-500', headerBg: 'bg-cyan-700' },
+  'Department Verification': { bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-300', accent: 'bg-purple-500', headerBg: 'bg-purple-700' },
+  'Verification': { bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-300', accent: 'bg-purple-500', headerBg: 'bg-purple-700' },
+  'Net Meter Installed': { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-300', accent: 'bg-amber-500', headerBg: 'bg-amber-700' },
+  'Subsidy Pending': { bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-300', accent: 'bg-orange-500', headerBg: 'bg-orange-700' },
+  'Subsidy Released': { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-300', accent: 'bg-emerald-500', headerBg: 'bg-emerald-700' },
+  'Completed': { bg: 'bg-green-50', text: 'text-green-800', border: 'border-green-300', accent: 'bg-green-500', headerBg: 'bg-green-700' },
+  'Customer Review': { bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-300', accent: 'bg-rose-500', headerBg: 'bg-rose-700' }
+};
+
 export default function Projects({ initialFilter }: { initialFilter?: string }) {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [searchTerm, setSearchTerm] = useState(initialFilter || '');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<string>('ALL');
@@ -63,18 +78,24 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-
-  const [newProject, setNewProject] = useState<Partial<Project>>({ 
+  
+  const getCleanProjectState = (): Partial<Project> => ({ 
+    leadId: '',
     customerName: '', 
     phone: '',
     address: '',
-    capacityKw: 5, 
-    totalCost: 250000, 
-    amountPaid: 50000,
-    priority: 'High',
-    assignedTo: 'Rajesh Kumar (Lead Installer)',
+    city: '',
+    state: '',
+    capacityKw: 3, 
+    capacityUnit: 'KW',
+    totalCost: 150000, 
+    amountPaid: 0,
+    priority: 'Medium',
+    assignedTo: '',
     status: 'Initial' 
   });
+
+  const [newProject, setNewProject] = useState<Partial<Project>>(getCleanProjectState());
 
   const [crmLeads, setCrmLeads] = useState<any[]>([]);
 
@@ -94,7 +115,8 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
   const handleSelectCrmLead = (leadId: string) => {
     const lead = crmLeads.find(l => l.id === leadId);
     if (lead) {
-      const cap = parseFloat(lead.expectedLoad || '5') || 5;
+      const rawCap = parseFloat(lead.expectedLoad || '3') || 3;
+      const cap = lead.expectedLoadUnit === 'MW' ? rawCap * 1000 : rawCap;
       setNewProject({
         ...newProject,
         leadId: lead.id,
@@ -104,6 +126,7 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
         city: lead.city || '',
         state: lead.state || '',
         capacityKw: cap,
+        capacityUnit: lead.expectedLoadUnit || 'KW',
         totalCost: cap * 50000
       });
     }
@@ -270,7 +293,11 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
         </div>
 
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setEditingProjectId(null);
+            setNewProject(getCleanProjectState());
+            setIsModalOpen(true);
+          }}
           className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-md shadow-emerald-200 flex items-center gap-2 shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
@@ -349,6 +376,24 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
             </select>
           </div>
 
+          {/* Expand / Collapse All Toggle */}
+          {viewMode === 'kanban' && (
+            <button
+              type="button"
+              onClick={() => {
+                const areAllExpanded = projects.length > 0 && projects.every(p => expandedCards[p.id]);
+                const next: Record<string, boolean> = {};
+                if (!areAllExpanded) {
+                  projects.forEach(p => { next[p.id] = true; });
+                }
+                setExpandedCards(next);
+              }}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              {projects.length > 0 && projects.every(p => expandedCards[p.id]) ? 'Collapse All' : 'Expand All'}
+            </button>
+          )}
+
           {/* View Mode Switcher */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
@@ -390,86 +435,126 @@ export default function Projects({ initialFilter }: { initialFilter?: string }) 
         <div className="flex overflow-x-auto pb-6 gap-4 no-scrollbar min-h-[600px] items-start">
           {PIPELINE_STAGES.map((stage, stageIdx) => {
             const stageProjects = filteredProjects.filter(p => (p.status || 'Initial') === stage);
+            const colorTheme = STAGE_COLOR_MAP[stage] || STAGE_COLOR_MAP['Initial'];
 
             return (
               <div key={stage} className="w-72 shrink-0 bg-slate-100/70 border border-slate-200/80 rounded-2xl p-3 space-y-3">
-                {/* Stage Header */}
+                {/* Stage Header with Distinct Color Badges */}
                 <div className="flex justify-between items-center px-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-black text-[10px] flex items-center justify-center">
+                    <span className={cn("w-5 h-5 rounded-full text-white font-black text-[10px] flex items-center justify-center shadow-xs", colorTheme.headerBg)}>
                       {stageIdx + 1}
                     </span>
                     <h3 className="text-xs font-black text-slate-800">{stage}</h3>
                   </div>
-                  <span className="px-2 py-0.5 bg-white text-slate-700 text-[10px] font-black rounded-full border border-slate-200">
+                  <span className={cn("px-2 py-0.5 text-[10px] font-black rounded-full border shadow-2xs", colorTheme.bg, colorTheme.text, colorTheme.border)}>
                     {stageProjects.length}
                   </span>
                 </div>
 
-                {/* Project Cards */}
-                <div className="space-y-3">
+                {/* Project Cards (Minimizable by default to save screen space) */}
+                <div className="space-y-2.5">
                   {stageProjects.length === 0 ? (
                     <div className="p-6 text-center text-slate-400 font-semibold text-xs border border-dashed border-slate-300 rounded-xl bg-white/50">
-                      No projects
+                      No projects in this stage
                     </div>
                   ) : (
-                    stageProjects.map(project => (
-                      <div
-                        key={project.id}
-                        onClick={() => setSelectedProject(project)}
-                        className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:shadow-md transition-all space-y-3 cursor-pointer group hover:border-emerald-500/50 relative overflow-hidden"
-                      >
-                        <div className="flex justify-between items-start">
-                          <span className={cn(
-                            "px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider",
-                            project.priority === 'Urgent' ? "bg-red-100 text-red-800" :
-                            project.priority === 'High' ? "bg-amber-100 text-amber-800" :
-                            "bg-blue-100 text-blue-800"
-                          )}>
-                            {project.priority || 'High'} Priority
-                          </span>
+                    stageProjects.map(project => {
+                      const isExpanded = !!expandedCards[project.id];
+                      return (
+                        <div
+                          key={project.id}
+                          className={cn(
+                            "bg-white border rounded-xl p-3 shadow-xs hover:shadow-md transition-all space-y-2 relative border-l-4 group",
+                            colorTheme.border,
+                            isExpanded ? "border-l-emerald-500 bg-slate-50/40" : "hover:border-slate-300"
+                          )}
+                        >
+                          {/* Top Row: Customer Name & Minimization Chevron */}
+                          <div className="flex justify-between items-start gap-2">
+                            <div 
+                              onClick={() => setSelectedProject(project)}
+                              className="cursor-pointer flex-1"
+                            >
+                              <h4 className="text-xs font-black text-slate-900 group-hover:text-emerald-600 transition-colors leading-tight">
+                                {project.customerName}
+                              </h4>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 font-extrabold rounded text-[10px]">
+                                  ⚡ {project.capacityKw} kW
+                                </span>
+                                <span className="font-bold text-slate-700 text-[11px]">
+                                  ₹{project.totalCost?.toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </div>
 
-                          <button
-                            onClick={(e) => handleDeleteProject(project.id, e, showTrash)}
-                            className="text-slate-300 hover:text-red-500 p-0.5 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedCards(prev => ({ ...prev, [project.id]: !prev[project.id] }));
+                                }}
+                                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition-colors cursor-pointer text-xs font-black"
+                                title={isExpanded ? "Minimize Card" : "Expand Card Details"}
+                              >
+                                {isExpanded ? '▲' : '▼'}
+                              </button>
+
+                              <button
+                                onClick={(e) => handleDeleteProject(project.id, e, showTrash)}
+                                className="text-slate-300 hover:text-red-500 p-1 transition-colors cursor-pointer"
+                                title="Delete Project"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Expanded Details Body */}
+                          {isExpanded && (
+                            <div className="space-y-2.5 pt-2 border-t border-slate-100 animate-in fade-in duration-150 text-xs">
+                              <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" /> {project.address || project.city || 'Site Location'}
+                              </p>
+
+                              {project.phone && (
+                                <p className="text-[11px] text-slate-600 font-semibold flex items-center gap-1">
+                                  📞 {project.phone}
+                                </p>
+                              )}
+
+                              {project.assignedTo && (
+                                <p className="text-[10px] text-slate-600 font-semibold flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg">
+                                  <UserCheck className="w-3 h-3 text-emerald-600 shrink-0" /> Lead: {project.assignedTo}
+                                </p>
+                              )}
+
+                              <div className="flex items-center justify-between gap-1 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedProject(project)}
+                                  className="text-[10px] font-black text-emerald-700 hover:underline cursor-pointer"
+                                >
+                                  View Full Project →
+                                </button>
+                              </div>
+
+                              {/* Advance Stage Button */}
+                              {stageIdx < PIPELINE_STAGES.length - 1 && (
+                                <button
+                                  onClick={(e) => handleAdvanceStage(project, e)}
+                                  className="w-full py-1.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1 mt-1 shadow-xs cursor-pointer"
+                                >
+                                  Move to {PIPELINE_STAGES[stageIdx + 1]} <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
-
-                        <div>
-                          <h4 className="text-xs font-black text-slate-900 group-hover:text-emerald-600 transition-colors">
-                            {project.customerName}
-                          </h4>
-                          <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3 text-slate-400" /> {project.address || project.city || 'Site Location'}
-                          </p>
-                        </div>
-
-                        <div className="p-2.5 bg-slate-50 rounded-lg flex items-center justify-between text-[11px] font-bold border border-slate-100">
-                          <span className="text-slate-700 flex items-center gap-1">
-                            <Zap className="w-3.5 h-3.5 text-amber-500" /> {project.capacityKw} kW System
-                          </span>
-                          <span className="text-slate-900 font-black">₹{project.totalCost?.toLocaleString()}</span>
-                        </div>
-
-                        {project.assignedTo && (
-                          <p className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
-                            <UserCheck className="w-3 h-3 text-emerald-600" /> Lead: {project.assignedTo}
-                          </p>
-                        )}
-
-                        {/* Advance Stage Button */}
-                        {stageIdx < PIPELINE_STAGES.length - 1 && (
-                          <button
-                            onClick={(e) => handleAdvanceStage(project, e)}
-                            className="w-full py-1.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1 mt-2 shadow-xs"
-                          >
-                            Move to {PIPELINE_STAGES[stageIdx + 1]} <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

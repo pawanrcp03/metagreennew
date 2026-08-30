@@ -20,13 +20,29 @@ import { db } from '@/src/lib/firebase';
 import { storageService } from '@/src/services/storage.service';
 import { format } from 'date-fns';
 
-type DocCategory = 'KYC / Customer Docs (Aadhaar, Passbook)' | 'Electricity Bill' | 'Site Photos (Before / After)' | 'Subsidy Docs' | 'DCR Certificate' | 'Survey Report' | 'Agreement' | 'Warranty' | 'Net Meter Approval' | 'Invoices';
+type DocCategory = 
+  | 'KYC / Customer Docs (Aadhaar, Passbook)' 
+  | 'Electricity Bill' 
+  | 'Material Photos' 
+  | 'Site Before Photos' 
+  | 'Site After Photos' 
+  | 'Subsidy Docs' 
+  | 'DCR Certificate' 
+  | 'Survey Report' 
+  | 'Agreement' 
+  | 'Warranty' 
+  | 'Department Verification Report' 
+  | 'Net Meter Approval' 
+  | 'Invoices';
 
 const CATEGORIES: { id: DocCategory, label: string, icon: any, required: boolean }[] = [
   { id: 'KYC / Customer Docs (Aadhaar, Passbook)', label: 'Customer Docs (Aadhaar, Bill, Passbook)', icon: User, required: true },
   { id: 'Electricity Bill', label: 'Electricity Bill', icon: FileText, required: true },
-  { id: 'Site Photos (Before / After)', label: 'Site Photos (Before / After)', icon: ImageIcon, required: true },
-  { id: 'Subsidy Docs', label: 'Subsidy Application Docs', icon: FileCheck, required: true },
+  { id: 'Material Photos', label: 'Material Photos (Panels, Inverters, Cables, Structures)', icon: ImageIcon, required: true },
+  { id: 'Site Before Photos', label: 'Site Before Photos (Rooftop & Electrical Pre-Install)', icon: ImageIcon, required: true },
+  { id: 'Site After Photos', label: 'Site After Photos (Commissioned Array, Inverter & Meter)', icon: CheckCircle2, required: true },
+  { id: 'Subsidy Docs', label: 'PM Surya Ghar Subsidy Application Docs', icon: FileCheck, required: true },
+  { id: 'Department Verification Report', label: 'Department Verification & Inspection Report', icon: FileCheck, required: true },
   { id: 'DCR Certificate', label: 'DCR Solar Panel Certificate', icon: FileCheck, required: true },
   { id: 'Survey Report', label: 'Site Survey Report', icon: Building, required: true },
   { id: 'Agreement', label: 'Customer Agreement', icon: FileCheck, required: true },

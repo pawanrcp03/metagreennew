@@ -5,13 +5,17 @@ interface MetaGreenLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showText?: boolean;
   textSub?: string;
+  variant?: 'light' | 'dark' | 'auto';
+  inverted?: boolean;
 }
 
 export const MetaGreenLogo: React.FC<MetaGreenLogoProps> = ({ 
   className = '', 
   size = 'md',
   showText = true,
-  textSub = 'SOLAR SOFTWARE SOLUTIONS'
+  textSub = 'SOLAR SOFTWARE SOLUTIONS',
+  variant = 'auto',
+  inverted = false
 }) => {
   const dimensions = {
     sm: { width: 140, height: 42, iconSize: 32, fontSize: 16 },
@@ -19,6 +23,8 @@ export const MetaGreenLogo: React.FC<MetaGreenLogoProps> = ({
     lg: { width: 320, height: 90, iconSize: 72, fontSize: 30 },
     xl: { width: 450, height: 130, iconSize: 100, fontSize: 42 },
   }[size];
+
+  const isDarkMode = variant === 'dark' || inverted;
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>
@@ -110,16 +116,16 @@ export const MetaGreenLogo: React.FC<MetaGreenLogoProps> = ({
       {/* METAGREEN Text Wordmark */}
       {showText && (
         <div className="flex flex-col">
-          <div className="flex items-center font-black tracking-tight leading-none text-slate-900" style={{ fontSize: dimensions.fontSize }}>
-            <span className="text-[#0F172A]">MET</span>
+          <div className="flex items-center font-black tracking-tight leading-none" style={{ fontSize: dimensions.fontSize }}>
+            <span className={isDarkMode ? "text-white" : "text-[#0F172A]"}>MET</span>
             <span className="relative flex items-center inline-block">
-              <span className="text-[#0F172A]">A</span>
-              <span className="absolute left-[30%] bottom-[25%] w-0 h-0 border-l-[4px] border-r-[4px] border-b-[7px] border-l-transparent border-r-transparent border-b-emerald-600" />
+              <span className={isDarkMode ? "text-white" : "text-[#0F172A]"}>A</span>
+              <span className="absolute left-[30%] bottom-[25%] w-0 h-0 border-l-[4px] border-r-[4px] border-b-[7px] border-l-transparent border-r-transparent border-b-emerald-500" />
             </span>
-            <span className="text-[#16A34A] tracking-wider ml-0.5">GREEN</span>
+            <span className="text-[#10B981] tracking-wider ml-0.5 font-black">GREEN</span>
           </div>
           {textSub && (
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.25em] text-slate-500 mt-1">
+            <span className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.25em] mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
               {textSub}
             </span>
           )}
