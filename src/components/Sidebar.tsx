@@ -111,7 +111,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'Lead Pipeline & GPS Location',
           description: 'Customer inquiries, expected system size (KW/MW) & monthly electricity range',
           icon: Users,
-          roles: ['Super Admin', 'Solar Company Admin', 'Regional Manager', 'Sales Executive']
+          roles: ['Super Admin', 'Solar Company Admin', 'Regional Manager', 'Sales Executive', 'Vendor', 'Vendor Employee', 'Installer', 'Solar Installer', 'Survey Engineer', 'Project Manager']
         },
         {
           id: 'solar-design',
@@ -119,7 +119,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'PV System Design & 3D Rooftop',
           description: 'CAD 3D layout, shading analysis, solar module placement & string sizing',
           icon: PenTool,
-          roles: ['Super Admin', 'Solar Company Admin', 'Design Engineer', 'Project Manager', 'Solar Installer', 'Installer']
+          roles: ['Super Admin', 'Solar Company Admin', 'Design Engineer', 'Project Manager', 'Solar Installer', 'Installer', 'Vendor', 'Vendor Employee', 'Sales Executive']
         }
       ]
     },
@@ -135,7 +135,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'Customer Sales Proposals & ROI',
           description: 'System generation estimates, branding headers & quotation approvals',
           icon: FileText,
-          roles: ['Super Admin', 'Solar Company Admin', 'Sales Executive']
+          roles: ['Super Admin', 'Solar Company Admin', 'Sales Executive', 'Vendor', 'Vendor Employee', 'Installer', 'Solar Installer', 'Project Manager']
         },
         {
           id: 'quotation',
@@ -143,7 +143,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'Estimates & 70:30 Billing Rule',
           description: '70% Goods & 30% Services tax calculation rule & automated CRM sync',
           icon: Calculator,
-          roles: ['Super Admin', 'Solar Company Admin', 'Sales Executive', 'Finance Manager']
+          roles: ['Super Admin', 'Solar Company Admin', 'Sales Executive', 'Finance Manager', 'Vendor', 'Vendor Employee', 'Installer', 'Solar Installer']
         },
         {
           id: 'tax-invoice',
@@ -151,7 +151,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           subHeader: 'Official GST Tax Invoice Generator',
           description: 'Full GST 70:30 Tax Invoice generator with QR code and PDF print download',
           icon: IndianRupee,
-          roles: ['Super Admin', 'Solar Company Admin', 'Finance Manager', 'Auditor', 'Sales Executive']
+          roles: ['Super Admin', 'Solar Company Admin', 'Finance Manager', 'Auditor', 'Sales Executive', 'Vendor', 'Installer']
         }
       ]
     },
@@ -304,8 +304,8 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
   ];
 
   const filterSubItems = (items: NavSubItem[]) => {
-    if (!userRole || userRole === 'Super Admin' || userRole === 'Solar Company Admin') return items;
-    return items.filter(item => !item.roles || item.roles.includes(userRole));
+    // All modules are visible in both Vendor, Installer, and Admin logins
+    return items;
   };
 
   const isCategoryActive = (category: NavCategory) => {

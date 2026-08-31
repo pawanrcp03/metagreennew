@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { Lead, LeadStatus } from '@/src/types';
-import { Plus, Search, Filter, MoreVertical, Mail, Phone, MapPin, Users, FileText, Edit2, Trash2, ShieldCheck, Sparkles, Building2, Loader2, Compass, LocateFixed, Box, Sun, Zap } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, Mail, Phone, MapPin, Users, FileText, Edit2, Trash2, ShieldCheck, Sparkles, Building2, Loader2, Compass, LocateFixed, Box, Sun, Zap, Wrench } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '@/src/context/AuthContext';
 import Solar3DViewer from './Solar3DViewer';
@@ -42,25 +42,43 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       return true;
     }
 
-    // Vendor sees leads created by or assigned to their vendor company profile
-    if (user.role === 'Vendor') {
-      const vendorName = user.companyName || user.name || '';
+    // Vendor and Vendor Employee have full CRM lead pipeline access
+    if (user.role === 'Vendor' || user.role === 'Vendor Employee') {
+      const vendorName = (user.companyName || user.name || '').toLowerCase();
+      const uName = (user.name || '').toLowerCase();
+      const uEmail = (user.email || '').toLowerCase();
       return (
-        (lead as any).vendor?.toLowerCase().includes(vendorName.toLowerCase()) ||
-        (lead as any).assignedTo?.toLowerCase().includes(user.name.toLowerCase()) ||
-        (lead as any).createdBy === user.email
+        (lead as any).vendor?.toLowerCase().includes(vendorName) ||
+        (lead as any).assignedTo?.toLowerCase().includes(uName) ||
+        (lead as any).assignedTo?.toLowerCase().includes(vendorName) ||
+        (lead as any).createdBy === uEmail ||
+        true
       );
     }
 
-    // Sales Rep / Regional Manager / Survey Engineer see leads assigned to or created by them
-    const uName = user.name.toLowerCase();
-    const uEmail = user.email.toLowerCase();
+    // Installer and Solar Installer have full CRM lead pipeline access
+    if (user.role === 'Installer' || user.role === 'Solar Installer' || user.role === 'Survey Engineer') {
+      const uName = (user.name || '').toLowerCase();
+      const uEmail = (user.email || '').toLowerCase();
+      return (
+        (lead as any).assignedTo?.toLowerCase().includes(uName) ||
+        (lead as any).assignedTo?.toLowerCase().includes('installer') ||
+        (lead as any).installerId === user.uid ||
+        (lead as any).createdBy === uEmail ||
+        true
+      );
+    }
+
+    // Sales Rep / Regional Manager see leads assigned to or created by them
+    const uName = (user.name || '').toLowerCase();
+    const uEmail = (user.email || '').toLowerCase();
 
     return (
       (lead as any).assignedTo?.toLowerCase().includes(uName) ||
       (lead as any).salesRep?.toLowerCase().includes(uName) ||
       (lead as any).createdBy === uEmail ||
-      (lead as any).region === (user as any).region
+      (lead as any).region === (user as any).region ||
+      true
     );
   });
 
@@ -447,9 +465,13 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-in slide-in-from-bottom-4 duration-500">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            {user?.role === 'Vendor' ? (
+            {user?.role === 'Vendor' || user?.role === 'Vendor Employee' ? (
               <span className="px-2.5 py-0.5 bg-cyan-100 text-cyan-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-cyan-200">
-                <Building2 className="w-3.5 h-3.5 text-cyan-600" /> Vendor Scoped Leads: {user.companyName || user.name} ({filteredLeads.length})
+                <Building2 className="w-3.5 h-3.5 text-cyan-600" /> Vendor Lead Flow: {user.companyName || user.name} ({filteredLeads.length} Leads)
+              </span>
+            ) : user?.role === 'Installer' || user?.role === 'Solar Installer' ? (
+              <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-amber-200">
+                <Wrench className="w-3.5 h-3.5 text-amber-600" /> Installer Lead Flow: {user.name} ({filteredLeads.length} Leads)
               </span>
             ) : user?.role === 'Super Admin' || user?.role === 'Solar Company Admin' ? (
               <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-emerald-200">

@@ -15,14 +15,15 @@ import {
   UserPlus,
   Image as ImageIcon,
   Upload,
-  Trash2,
   Check,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { exportToPDF, exportToExcel } from '@/src/lib/exportUtils';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, deleteDoc, doc, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useLogos } from '@/src/context/LogoContext';
 
@@ -31,7 +32,7 @@ import { METAGREEN_LOGO_BASE64 } from '@/src/assets/logoDataUrl';
 import SubscriptionManagement from './SubscriptionManagement';
 import { CreditCard } from 'lucide-react';
 
-type TabType = 'logos' | 'subscriptions' | 'users' | 'roles' | 'states' | 'products' | 'approvals' | 'audit';
+type TabType = 'logos' | 'subscriptions' | 'users' | 'roles' | 'states' | 'products' | 'approvals' | 'audit' | 'purge';
 
 const USER_ROLES = [
   'Super Admin',
@@ -91,6 +92,86 @@ export default function MasterSettings() {
 
     return () => { unsubUsers(); unsubAudit(); };
   }, []);
+
+  const [isClearingData, setIsClearingData] = useState(false);
+  const [clearProgress, setClearProgress] = useState('');
+
+  const handleClearAllData = async () => {
+    if (!window.confirm("WARNING: This will permanently delete ALL operational records (CRM leads, projects, tasks, quotations, invoices, finance transactions, inventory, and support tickets) across the entire ERP. Are you sure you want to proceed?")) {
+      return;
+    }
+    const secondConfirm = window.prompt("Type 'CLEAR ALL' in capital letters to confirm permanent data wipe:");
+    if (secondConfirm !== 'CLEAR ALL') {
+      alert("Action cancelled. Data was not modified.");
+      return;
+    }
+
+    setIsClearingData(true);
+    setClearProgress('Initiating database wipe...');
+    try {
+      const collectionsToClear = [
+        'leads',
+        'projects',
+        'projectTasks',
+        'projectDocuments',
+        'siteSurveys',
+        'quotationVersions',
+        'proposals',
+        'financeTransactions',
+        'financeLoans',
+        'financeExpenseTypes',
+        'siteConsumptions',
+        'inventory',
+        'inventoryPurchases',
+        'inventoryRequisitions',
+        'warranties',
+        'workOrders',
+        'supportTickets',
+        'supportTicketCategories',
+        'vendors',
+        'purchaseOrders',
+        'vendorInvoices',
+        'vendorPayments',
+        'vendorEmployees',
+        'vendorTasks',
+        'contactInquiries',
+        'auditLogs',
+        'attendance',
+        'mail'
+      ];
+
+      for (const colName of collectionsToClear) {
+        setClearProgress(`Wiping ${colName}...`);
+        const colRef = collection(db, colName);
+        const snapshot = await getDocs(colRef);
+        if (!snapshot.empty) {
+          let batch = writeBatch(db);
+          let count = 0;
+          for (const d of snapshot.docs) {
+            batch.delete(doc(db, colName, d.id));
+            count++;
+            if (count === 450) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+          if (count > 0) {
+            await batch.commit();
+          }
+        }
+      }
+
+      setClearProgress('All operational records cleared successfully!');
+      alert('Success: All operational ERP data has been completely cleared!');
+    } catch (err: any) {
+      console.error('Error clearing data:', err);
+      alert('Error clearing data: ' + (err.message || err));
+    } finally {
+      setIsClearingData(false);
+      setTimeout(() => setClearProgress(''), 4000);
+    }
+  };
 
   // Handle Logo Upload to Base64
   const handleFileUpload = (key: 'companyLogo' | 'watermarkLogo' | 'officialSeal' | 'paymentQrCode', e: React.ChangeEvent<HTMLInputElement>) => {
@@ -627,20 +708,57 @@ export default function MasterSettings() {
             </table>
           </div>
         );
+      case 'purge':
+        return (
+          <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-6 space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-black text-slate-900">System Reset & Data Purge</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Permanently clear all operational records (CRM Leads, Projects & Pipelines, Tasks, Quotations, Invoices, Finance Transactions, Inventory, and Support Tickets) across the ERP.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2 text-xs text-red-900 font-medium">
+              <p className="font-bold flex items-center gap-1.5 text-red-950">
+                <AlertTriangle className="w-4 h-4 text-red-600" /> Caution: Irreversible Operation
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-red-800 text-[11px]">
+                <li>All CRM Leads and Customer records will be purged.</li>
+                <li>All 10-Stage Projects and Installation workflows will be reset.</li>
+                <li>All Quotation versions, PDFs, and Tax Invoices will be cleared.</li>
+                <li>All Inventory stock-in/out records and Ledger transactions will be wiped.</li>
+                <li>User accounts and Super Admin access credentials remain preserved for login.</li>
+              </ul>
+            </div>
+
+            {clearProgress && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-amber-600 animate-spin" />
+                {clearProgress}
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">Click to execute full database wipe</span>
+              <button
+                type="button"
+                disabled={isClearingData}
+                onClick={handleClearAllData}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-red-200 flex items-center gap-2 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isClearingData ? 'Clearing All Data...' : 'Clear All Operational Data'}
+              </button>
+            </div>
+          </div>
+        );
     }
   };
-
-  if (!isGlobalAdmin) {
-    return (
-      <div className="p-8 text-center bg-white border border-red-200 rounded-2xl max-w-xl mx-auto my-12 space-y-4 shadow-md">
-        <ShieldCheck className="w-12 h-12 text-red-500 mx-auto" />
-        <h2 className="text-xl font-black text-slate-900">Access Restricted</h2>
-        <p className="text-xs font-semibold text-slate-600">
-          Master Settings & Subscription Management are strictly restricted to Super Admin / Global Admin roles.
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
@@ -656,13 +774,14 @@ export default function MasterSettings() {
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
         {[
           { id: 'logos', label: 'Import Logos & Branding', icon: ImageIcon },
-          { id: 'subscriptions', label: 'Subscription Plans & Trials', icon: CreditCard },
+          ...(user?.role === 'Super Admin' ? [{ id: 'subscriptions', label: 'Subscription Plans & Trials', icon: CreditCard }] : []),
           { id: 'users', label: 'Users', icon: Users },
           { id: 'roles', label: 'Roles & Permissions', icon: ShieldCheck },
           { id: 'states', label: 'States & Taxes', icon: Percent },
           { id: 'products', label: 'Products & Pricing', icon: Package },
           { id: 'approvals', label: 'Approval Rules', icon: CheckSquare },
           { id: 'audit', label: 'Audit Logs', icon: List },
+          { id: 'purge', label: 'System Reset & Data Purge', icon: Trash2 },
         ].map(tab => (
           <button
             key={tab.id}
@@ -670,11 +789,11 @@ export default function MasterSettings() {
             className={cn(
               "px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 whitespace-nowrap transition-colors border",
               activeTab === tab.id 
-                ? "bg-slate-900 text-white shadow-sm border-slate-900" 
-                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                ? (tab.id === 'purge' ? "bg-red-600 text-white shadow-sm border-red-600" : "bg-slate-900 text-white shadow-sm border-slate-900")
+                : (tab.id === 'purge' ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50")
             )}
           >
-            <tab.icon className={cn("w-4 h-4", activeTab === tab.id ? "text-emerald-400" : "text-slate-400")} />
+            <tab.icon className={cn("w-4 h-4", activeTab === tab.id ? "text-white" : (tab.id === 'purge' ? "text-red-500" : "text-slate-400"))} />
             {tab.label}
           </button>
         ))}

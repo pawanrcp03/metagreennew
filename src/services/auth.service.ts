@@ -1,6 +1,6 @@
 import { auth, db } from '../lib/firebase';
-import { 
-  signInWithEmailAndPassword, 
+import {
+  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updatePassword,
   signOut,
@@ -212,8 +212,8 @@ export const authService = {
     const freshEmail = targetRole === 'vendor-employee'
       ? `staff_${Date.now().toString().slice(-4)}@vikramsolar.com`
       : targetRole === 'vendor'
-      ? `vendor_${Date.now().toString().slice(-4)}@vikramsolar.com`
-      : `admin_${Date.now().toString().slice(-4)}@metagreen.com`;
+        ? `vendor_${Date.now().toString().slice(-4)}@vikramsolar.com`
+        : `admin_${Date.now().toString().slice(-4)}@metagreen.com`;
 
     return await this.register(
       freshEmail,
@@ -226,11 +226,11 @@ export const authService = {
   },
 
   async register(
-    email: string, 
-    password: string, 
-    name: string, 
-    role: UserRole, 
-    companyName?: string, 
+    email: string,
+    password: string,
+    name: string,
+    role: UserRole,
+    companyName?: string,
     mustChangePassword: boolean = false,
     companyLogo?: string
   ): Promise<UserProfile> {
@@ -261,7 +261,7 @@ export const authService = {
 
   async updateUserPassword(newPassword: string): Promise<void> {
     if (!auth.currentUser) throw new Error("No user currently logged in.");
-    
+
     // Update Firebase Auth password
     await updatePassword(auth.currentUser, newPassword);
 
