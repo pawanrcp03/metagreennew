@@ -19,7 +19,11 @@ import {
   Sparkles,
   RefreshCw,
   AlertTriangle,
-  Trash2
+  Trash2,
+  Building2,
+  Edit2,
+  X,
+  Sun
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { exportToPDF, exportToExcel } from '@/src/lib/exportUtils';
@@ -32,7 +36,7 @@ import { METAGREEN_LOGO_BASE64 } from '@/src/assets/logoDataUrl';
 import SubscriptionManagement from './SubscriptionManagement';
 import { CreditCard } from 'lucide-react';
 
-type TabType = 'logos' | 'subscriptions' | 'users' | 'roles' | 'states' | 'products' | 'approvals' | 'audit' | 'purge';
+type TabType = 'logos' | 'subscriptions' | 'users' | 'roles' | 'roof-types' | 'states' | 'products' | 'approvals' | 'audit' | 'purge';
 
 const USER_ROLES = [
   'Super Admin',
@@ -60,6 +64,16 @@ export default function MasterSettings() {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [roofTypesList, setRoofTypesList] = useState<any[]>([]);
+  const [isRoofModalOpen, setIsRoofModalOpen] = useState(false);
+  const [editingRoofId, setEditingRoofId] = useState<string | null>(null);
+  const [roofForm, setRoofForm] = useState({
+    name: '',
+    description: '',
+    structureType: 'Flush Mount / Mini Rail',
+    tiltAngle: '15°',
+    status: 'Active'
+  });
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const { logos, updateLogos, resetLogos } = useLogos();
@@ -90,7 +104,25 @@ export default function MasterSettings() {
       setAuditLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => { unsubUsers(); unsubAudit(); };
+    const unsubRoofs = onSnapshot(collection(db, 'roofTypes'), (snapshot) => {
+      if (snapshot.empty) {
+        const initialRoofTypes = [
+          { name: 'RCC Flat Roof', description: 'Concrete Slab with south-facing ballasted or anchor mounts', structureType: 'Ballasted / Anchor Fixed Tilt', tiltAngle: '15° - 20°', status: 'Active' },
+          { name: 'Tin / Metal Shed', description: 'Industrial trapezoidal or standing seam sheet with mini-rails', structureType: 'Mini Rail / Klip-lok Clamps', tiltAngle: 'Parallel to Roof (3° - 10°)', status: 'Active' },
+          { name: 'Tiled / Mangalore Roof', description: 'Pitched traditional clay/cement tiles with stainless steel rafter hooks', structureType: 'Tile Hooks & Profile Rails', tiltAngle: 'Pitch Slope (20° - 35°)', status: 'Active' },
+          { name: 'Asbestos Sheet', description: 'Corrugated cement asbestos roof with hanger bolts and rubber seals', structureType: 'Hanger Bolts & Long Rails', tiltAngle: 'Parallel to Roof', status: 'Active' },
+          { name: 'Ground Mount Structure', description: 'Open field piled ground mount with seasonal tilt adjustment', structureType: 'GI Piled Foundation Fixed Tilt', tiltAngle: '20° - 25°', status: 'Active' },
+          { name: 'Elevated Super Structure', description: 'Elevated rooftop gazebo / solar terrace enabling usable roof space below', structureType: 'High Elevated Heavy MS/GI Columns', tiltAngle: '12° - 15°', status: 'Active' }
+        ];
+        initialRoofTypes.forEach(rt => {
+          addDoc(collection(db, 'roofTypes'), { ...rt, createdAt: serverTimestamp() });
+        });
+      } else {
+        setRoofTypesList(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    });
+
+    return () => { unsubUsers(); unsubAudit(); unsubRoofs(); };
   }, []);
 
   const [isClearingData, setIsClearingData] = useState(false);
@@ -243,6 +275,66 @@ export default function MasterSettings() {
       setNewUser({ name: '', email: '', role: 'Sales Executive', status: 'Active' });
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleOpenAddRoof = () => {
+    setEditingRoofId(null);
+    setRoofForm({
+      name: '',
+      description: '',
+      structureType: 'Flush Mount / Mini Rail',
+      tiltAngle: '15°',
+      status: 'Active'
+    });
+    setIsRoofModalOpen(true);
+  };
+
+  const handleOpenEditRoof = (roof: any) => {
+    setEditingRoofId(roof.id);
+    setRoofForm({
+      name: roof.name || '',
+      description: roof.description || '',
+      structureType: roof.structureType || 'Flush Mount / Mini Rail',
+      tiltAngle: roof.tiltAngle || '15°',
+      status: roof.status || 'Active'
+    });
+    setIsRoofModalOpen(true);
+  };
+
+  const handleSaveRoofType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roofForm.name.trim()) return;
+    try {
+      if (editingRoofId) {
+        await updateDoc(doc(db, 'roofTypes', editingRoofId), {
+          ...roofForm,
+          updatedAt: serverTimestamp()
+        });
+        alert(`✅ Roof Type "${roofForm.name}" updated successfully!`);
+      } else {
+        await addDoc(collection(db, 'roofTypes'), {
+          ...roofForm,
+          createdAt: serverTimestamp()
+        });
+        alert(`✅ Roof Type "${roofForm.name}" created successfully!`);
+      }
+      setIsRoofModalOpen(false);
+      setEditingRoofId(null);
+    } catch (err) {
+      console.error('Error saving roof type:', err);
+      alert('Failed to save roof type.');
+    }
+  };
+
+  const handleDeleteRoofType = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete roof type "${name}"?`)) return;
+    try {
+      await deleteDoc(doc(db, 'roofTypes', id));
+      alert(`✅ Roof type "${name}" deleted.`);
+    } catch (err) {
+      console.error('Error deleting roof type:', err);
+      alert('Failed to delete roof type.');
     }
   };
 
@@ -618,6 +710,84 @@ export default function MasterSettings() {
           </div>
         );
 
+      case 'roof-types':
+        return (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+              <div>
+                <h3 className="font-black text-slate-900 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-emerald-600" /> Roof Types Master & Engineering Specifications
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Manage allowable roof substrates, mounting structure pairings, and design tilt angles for site surveys and projects
+                </p>
+              </div>
+              <button
+                onClick={handleOpenAddRoof}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors flex items-center gap-1.5 text-xs shadow-sm cursor-pointer shrink-0"
+              >
+                <Plus className="w-4 h-4" /> Add Roof Type
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-white text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
+                    <th className="p-4">Roof Type Name</th>
+                    <th className="p-4">Description & Substrate</th>
+                    <th className="p-4">Recommended Structure</th>
+                    <th className="p-4 text-center">Design Tilt</th>
+                    <th className="p-4 text-center">Status</th>
+                    <th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {roofTypesList.map((roof) => (
+                    <tr key={roof.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-4 font-bold text-slate-900 flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 font-black flex items-center justify-center text-xs">
+                          {roof.name.charAt(0)}
+                        </div>
+                        <span>{roof.name}</span>
+                      </td>
+                      <td className="p-4 text-slate-600 max-w-xs">{roof.description || 'Standard solar roof installation'}</td>
+                      <td className="p-4 text-slate-700 font-semibold">{roof.structureType || 'Fixed Tilt Structure'}</td>
+                      <td className="p-4 text-center font-bold text-slate-800">{roof.tiltAngle || '15°'}</td>
+                      <td className="p-4 text-center">
+                        <span className={cn(
+                          "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase",
+                          roof.status === 'Active' ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-600"
+                        )}>
+                          {roof.status || 'Active'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleOpenEditRoof(roof)}
+                            className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Roof Type"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRoofType(roof.id, roof.name)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Roof Type"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+
       case 'states':
         return (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -777,6 +947,7 @@ export default function MasterSettings() {
           ...(user?.role === 'Super Admin' ? [{ id: 'subscriptions', label: 'Subscription Plans & Trials', icon: CreditCard }] : []),
           { id: 'users', label: 'Users', icon: Users },
           { id: 'roles', label: 'Roles & Permissions', icon: ShieldCheck },
+          { id: 'roof-types', label: 'Roof Types Master', icon: Building2 },
           { id: 'states', label: 'States & Taxes', icon: Percent },
           { id: 'products', label: 'Products & Pricing', icon: Package },
           { id: 'approvals', label: 'Approval Rules', icon: CheckSquare },
@@ -838,6 +1009,121 @@ export default function MasterSettings() {
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => {setIsAddUserModalOpen(false); setNewUser({ name: '', email: '', role: 'Sales Executive', status: 'Active' });}} className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors">Cancel</button>
                 <button type="submit" className="flex-1 px-4 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors">Add User</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Roof Type Modal */}
+      {isRoofModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95">
+            <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <Building2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-black">
+                  {editingRoofId ? 'Edit Roof Type' : 'Add New Roof Type'}
+                </h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsRoofModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRoofType} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Roof Type Name *
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={roofForm.name}
+                  onChange={e => setRoofForm({ ...roofForm, name: e.target.value })}
+                  placeholder="e.g. Concrete Flat Roof / Tin Shed"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Description & Substrate Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={roofForm.description}
+                  onChange={e => setRoofForm({ ...roofForm, description: e.target.value })}
+                  placeholder="e.g. Concrete slab with waterproof membrane..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Mounting Structure
+                  </label>
+                  <select
+                    value={roofForm.structureType}
+                    onChange={e => setRoofForm({ ...roofForm, structureType: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="Ballasted / Anchor Fixed Tilt">Ballasted / Anchor Fixed Tilt</option>
+                    <option value="Flush Mount / Mini Rail">Flush Mount / Mini Rail</option>
+                    <option value="Tile Hooks & Profile Rails">Tile Hooks & Profile Rails</option>
+                    <option value="Hanger Bolts & Long Rails">Hanger Bolts & Long Rails</option>
+                    <option value="High Elevated Heavy MS/GI Columns">High Elevated Heavy MS/GI Columns</option>
+                    <option value="GI Piled Foundation Fixed Tilt">GI Piled Foundation Fixed Tilt</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Design Tilt Angle
+                  </label>
+                  <input
+                    type="text"
+                    value={roofForm.tiltAngle}
+                    onChange={e => setRoofForm({ ...roofForm, tiltAngle: e.target.value })}
+                    placeholder="e.g. 15° - 20°"
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Status
+                </label>
+                <select
+                  value={roofForm.status}
+                  onChange={e => setRoofForm({ ...roofForm, status: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsRoofModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> Save Roof Type
+                </button>
               </div>
             </form>
           </div>

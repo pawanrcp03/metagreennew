@@ -5,7 +5,8 @@ import {
   AlertTriangle, Sun, Edit2, Trash2, UserCheck, Filter, ShieldCheck, Wrench,
   Star, Phone, Check, ArrowRight, IndianRupee, MessageSquare, Zap,
   Camera, Upload, Image as ImageIcon, Eye, Sparkles, X, Package,
-  UserPlus, Loader2, Briefcase, Layers, CheckSquare, Square
+  UserPlus, Loader2, Briefcase, Layers, CheckSquare, Square,
+  CreditCard, Receipt
 } from 'lucide-react';
 import { Project, ProjectTask, ProjectStatus } from '@/src/types';
 import { cn, formatCurrency } from '@/src/lib/utils';
@@ -13,6 +14,7 @@ import { format } from 'date-fns';
 import { collection, query, where, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useToast } from '@/src/context/ToastContext';
+import { useAuth } from '@/src/context/AuthContext';
 
 interface ProjectDetailsProps {
   project: Project;
@@ -68,13 +70,37 @@ const SAMPLE_INSTALLATION_PHOTOS = [
 
 export default function ProjectDetails({ project, onBack }: ProjectDetailsProps) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'team' | 'photos' | 'review'>('pipeline');
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'team' | 'photos' | 'payments' | 'review'>('pipeline');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>(DEFAULT_STAFF);
   const [currentProject, setCurrentProject] = useState<Project>(project);
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  // Payment Recording State (Requirement 8)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedPaymentStage, setSelectedPaymentStage] = useState<string>(project.status || 'Initial');
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    mode: 'UPI / NetBanking',
+    reference: '',
+    receiptImageUrl: '',
+    notes: ''
+  });
+
+  // Step 2 -> Step 3 Stage Images State (Requirement 9)
+  const [isStageImagesModalOpen, setIsStageImagesModalOpen] = useState(false);
+  const [stageImagesData, setStageImagesData] = useState<{
+    siteImages: string[];
+    materialImages: string[];
+    afterImages: string[];
+  }>({
+    siteImages: [],
+    materialImages: [],
+    afterImages: []
+  });
 
   // Photo Upload Modal State
   const [photoModalType, setPhotoModalType] = useState<'survey' | 'installation' | null>(null);
@@ -300,12 +326,24 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
       }
     }
 
-    // 2. Mandatory Site Survey Photos check when moving to In Process or Assigned Installation
-    if (['In Process', 'Assigned Installation'].includes(newStage) && (!currentProject.siteSurveyImagesUrls || currentProject.siteSurveyImagesUrls.length === 0)) {
-      setPhotoModalType('survey');
-      setActiveTab('photos');
-      toast.warning("Site Survey photos are required before moving to In Process or Installation.", "Survey Photos Required");
-      return;
+    // 2. Step 2 -> Step 3 Stage Images Gatekeeper: Require Site Images, Material Images, and After Images
+    if (newStage === 'Assigned Installation' || (currentIdx === 1 && targetIdx >= 2)) {
+      const hasSite = (currentProject.siteSurveyImagesUrls && currentProject.siteSurveyImagesUrls.length > 0) || 
+                      (currentProject.siteBeforePhotos && currentProject.siteBeforePhotos.length > 0);
+      const hasMaterial = currentProject.materialPhotos && currentProject.materialPhotos.length > 0;
+      const hasAfter = (currentProject.siteAfterPhotos && currentProject.siteAfterPhotos.length > 0) || 
+                       (currentProject.installationImagesUrls && currentProject.installationImagesUrls.length > 0);
+
+      if (!hasSite || !hasMaterial || !hasAfter) {
+        setStageImagesData({
+          siteImages: currentProject.siteSurveyImagesUrls || currentProject.siteBeforePhotos || [],
+          materialImages: currentProject.materialPhotos || [],
+          afterImages: currentProject.siteAfterPhotos || currentProject.installationImagesUrls || []
+        });
+        setIsStageImagesModalOpen(true);
+        toast.warning("Advancing from Step 2 → Step 3 requires Site Images, Material Images, and After Images.", "Step 2/3 Proofs Required");
+        return;
+      }
     }
 
     // 3. Mandatory Installation Photos check when moving to Installation Complete or beyond
@@ -336,6 +374,104 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
     } catch (err) {
       console.error('Error updating stage:', err);
       toast.error('Failed to update project stage.', 'Stage Error');
+    }
+  };
+
+  // Step 2 -> Step 3 Stage Photos Confirmation
+  const handleSaveStage2To3Images = async () => {
+    if (stageImagesData.siteImages.length === 0 || stageImagesData.materialImages.length === 0 || stageImagesData.afterImages.length === 0) {
+      toast.warning("Please ensure at least one photo is uploaded for Site, Material, and After Images.", "Images Incomplete");
+      return;
+    }
+
+    try {
+      const updatedHistory = [
+        ...(currentProject.history || []),
+        { stage: 'Assigned Installation', timestamp: new Date().toISOString(), note: 'Step 2 → Step 3 completed with verified Site, Material, and After Images' }
+      ];
+
+      await updateDoc(doc(db, 'projects', currentProject.id), {
+        status: 'Assigned Installation',
+        siteSurveyImagesUrls: stageImagesData.siteImages,
+        siteBeforePhotos: stageImagesData.siteImages,
+        materialPhotos: stageImagesData.materialImages,
+        siteAfterPhotos: stageImagesData.afterImages,
+        installationImagesUrls: stageImagesData.afterImages,
+        history: updatedHistory,
+        updatedAt: serverTimestamp()
+      });
+
+      setIsStageImagesModalOpen(false);
+      toast.success("Step 2 → Step 3 verified! Stage updated to Assigned Installation.", "Step 3 Unlocked");
+    } catch (err) {
+      console.error("Error saving Step 2 -> Step 3 photos:", err);
+      toast.error("Failed to advance stage.", "Error");
+    }
+  };
+
+  // Record Payment at Any Stage (Requirement 8)
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amountNum = parseFloat(paymentForm.amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast.warning('Please enter a valid payment amount', 'Invalid Amount');
+      return;
+    }
+
+    try {
+      const newAmountPaid = (currentProject.amountPaid || 0) + amountNum;
+      const paymentRecord = {
+        id: `pay-${Date.now()}`,
+        stage: selectedPaymentStage,
+        amount: amountNum,
+        mode: paymentForm.mode,
+        reference: paymentForm.reference || `TXN-${Date.now().toString().slice(-6)}`,
+        receiptImageUrl: paymentForm.receiptImageUrl || '',
+        notes: paymentForm.notes || 'Stage Milestone Payment',
+        date: new Date().toISOString().split('T')[0],
+        recordedBy: user?.name || user?.email || 'Accounts Team',
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedPayments = [...(currentProject.payments || []), paymentRecord];
+
+      // 1. Update project doc
+      await updateDoc(doc(db, 'projects', currentProject.id), {
+        amountPaid: newAmountPaid,
+        payments: updatedPayments,
+        updatedAt: serverTimestamp()
+      });
+
+      // 2. Add income transaction to central finance ledger
+      await addDoc(collection(db, 'transactions'), {
+        type: 'Income',
+        category: 'Project Payment',
+        amount: amountNum,
+        status: 'Completed',
+        notes: `Project Payment from ${currentProject.customerName} (${selectedPaymentStage}): ${paymentForm.notes || ''}`,
+        date: new Date().toISOString().split('T')[0],
+        projectId: currentProject.id,
+        projectName: currentProject.name || currentProject.customerName,
+        customerName: currentProject.customerName,
+        stage: selectedPaymentStage,
+        paymentMode: paymentForm.mode,
+        reference: paymentForm.reference || `TXN-${Date.now().toString().slice(-6)}`,
+        receiptImageUrl: paymentForm.receiptImageUrl || '',
+        createdAt: serverTimestamp()
+      });
+
+      toast.success(`Payment of ₹${amountNum.toLocaleString()} recorded for ${selectedPaymentStage}!`, 'Payment Recorded');
+      setIsPaymentModalOpen(false);
+      setPaymentForm({
+        amount: '',
+        mode: 'UPI / NetBanking',
+        reference: '',
+        receiptImageUrl: '',
+        notes: ''
+      });
+    } catch (err) {
+      console.error('Error recording payment:', err);
+      toast.error('Failed to record project payment.', 'Error');
     }
   };
 
@@ -510,13 +646,26 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
 
       {/* 10-Stage Pipeline Progression Tracker */}
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white shadow-xl space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
-            <Milestone className="w-4 h-4" /> 10-Stage Solar Installation Pipeline Progress
-          </h3>
-          <span className="text-xs font-bold text-slate-300">
-            Stage {currentStageIndex + 1} of 10 ({currentProject.status})
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+              <Milestone className="w-4 h-4" /> 10-Stage Solar Installation Pipeline Progress
+            </h3>
+            <span className="text-xs font-bold text-slate-300 mt-0.5 block">
+              Stage {currentStageIndex + 1} of 10 ({currentProject.status}) • Collected: ₹{(currentProject.amountPaid || 0).toLocaleString()} / ₹{(currentProject.totalCost || 250000).toLocaleString()}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                setSelectedPaymentStage(currentProject.status || 'Initial');
+                setIsPaymentModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-emerald-500/20 cursor-pointer"
+            >
+              <CreditCard className="w-4 h-4" /> Record Payment
+            </button>
+          </div>
         </div>
 
         {/* Pipeline Steps Horizontal Bar */}
@@ -568,6 +717,27 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
             );
           })}
         </div>
+
+        {/* Quick Payment Action for Current Stage */}
+        <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-black uppercase">
+              Current Stage Payment
+            </span>
+            <span className="text-slate-300 font-medium">
+              Record milestone payment for <strong className="text-white">Stage {currentStageIndex + 1}: {currentProject.status}</strong>
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedPaymentStage(currentProject.status || 'Initial');
+              setIsPaymentModalOpen(true);
+            }}
+            className="text-xs font-bold text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            + Record Payment for {currentProject.status} &rarr;
+          </button>
+        </div>
       </div>
 
       {/* Customer Info & Financial Overview */}
@@ -604,9 +774,10 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
       <div className="flex gap-2 border-b border-slate-100 pb-2 overflow-x-auto">
         {[
           { id: 'pipeline', label: `1. Tasks & Workflow (${completedTasksCount}/${tasks.length})`, icon: ListTodo },
-          { id: 'photos', label: `📷 2. Site Survey & Installation Proofs (${surveyPhotoCount + installationPhotoCount})`, icon: Camera },
-          { id: 'team', label: '3. Assigned Team', icon: Users },
-          { id: 'review', label: '4. Customer Review & Ratings', icon: Star },
+          { id: 'photos', label: `📷 2. Stage Photos (Site, Material, After) (${(currentProject.materialPhotos?.length || 0) + (currentProject.siteSurveyImagesUrls?.length || 0) + (currentProject.installationImagesUrls?.length || 0)})`, icon: Camera },
+          { id: 'payments', label: `💰 3. Stage Payments (${currentProject.payments?.length || 0})`, icon: CreditCard },
+          { id: 'team', label: '4. Assigned Team', icon: Users },
+          { id: 'review', label: '5. Customer Review & Ratings', icon: Star },
         ].map(tab => (
           <button
             key={tab.id}
@@ -893,7 +1064,136 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
         </div>
       )}
 
-      {/* TAB 3: ASSIGNED TEAM */}
+      {/* TAB: STAGE PAYMENTS & COLLECTIONS (Requirement 8) */}
+      {activeTab === 'payments' && (
+        <div className="space-y-6">
+          {/* Payment Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-1">
+              <span className="text-[10px] font-black uppercase text-slate-400">Total Project Value</span>
+              <p className="text-2xl font-black text-slate-900">₹{(currentProject.totalCost || 250000).toLocaleString()}</p>
+              <p className="text-xs text-slate-500 font-medium">{currentProject.capacityKw} kW System Contract</p>
+            </div>
+
+            <div className="bg-emerald-50/70 p-5 rounded-2xl border border-emerald-200/70 shadow-sm space-y-1">
+              <span className="text-[10px] font-black uppercase text-emerald-800">Total Collected So Far</span>
+              <p className="text-2xl font-black text-emerald-700">₹{(currentProject.amountPaid || 0).toLocaleString()}</p>
+              <div className="w-full bg-emerald-200 rounded-full h-2 overflow-hidden mt-1">
+                <div
+                  className="bg-emerald-600 h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${Math.min(100, Math.round(((currentProject.amountPaid || 0) / (currentProject.totalCost || 250000)) * 100))}%`
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-amber-50/70 p-5 rounded-2xl border border-amber-200/70 shadow-sm space-y-1">
+              <span className="text-[10px] font-black uppercase text-amber-800">Remaining Balance</span>
+              <p className="text-2xl font-black text-amber-700">
+                ₹{Math.max(0, (currentProject.totalCost || 250000) - (currentProject.amountPaid || 0)).toLocaleString()}
+              </p>
+              <p className="text-xs text-amber-600 font-medium">To be collected across remaining stages</p>
+            </div>
+          </div>
+
+          {/* Payments Table & Action Header */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-600" />
+                  Stage-wise Payment Records ({currentProject.payments?.length || 0})
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Milestone collections logged across every stage of the 10-stage solar installation workflow
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPaymentStage(currentProject.status || 'Initial');
+                  setIsPaymentModalOpen(true);
+                }}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-200 flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-4 h-4" /> Record Payment
+              </button>
+            </div>
+
+            {(!currentProject.payments || currentProject.payments.length === 0) ? (
+              <div className="p-12 text-center space-y-3 bg-slate-50/30">
+                <Receipt className="w-10 h-10 text-slate-300 mx-auto" />
+                <p className="text-sm font-black text-slate-800">No Stage Payments Recorded Yet</p>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Click "Record Payment" to log initial customer advance, material delivery milestone, or final commissioning payment.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPaymentStage(currentProject.status || 'Initial');
+                    setIsPaymentModalOpen(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-xs hover:bg-emerald-700 cursor-pointer"
+                >
+                  + Record First Stage Payment
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
+                      <th className="p-4">Date</th>
+                      <th className="p-4">Stage Tagged</th>
+                      <th className="p-4 text-right">Amount (₹)</th>
+                      <th className="p-4">Mode</th>
+                      <th className="p-4">Reference / UTR</th>
+                      <th className="p-4">Receipt Proof</th>
+                      <th className="p-4">Notes</th>
+                      <th className="p-4 text-right">Recorded By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {currentProject.payments.map((p, idx) => (
+                      <tr key={p.id || idx} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="p-4 text-slate-600 font-mono">{p.date}</td>
+                        <td className="p-4">
+                          <span className="px-2.5 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-black rounded-full">
+                            {p.stage}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right font-black text-slate-900 text-sm">
+                          ₹{p.amount?.toLocaleString()}
+                        </td>
+                        <td className="p-4 text-slate-700 font-bold">{p.mode}</td>
+                        <td className="p-4 font-mono text-slate-600">{p.reference || '-'}</td>
+                        <td className="p-4">
+                          {p.receiptImageUrl ? (
+                            <button
+                              onClick={() => setPreviewImage(p.receiptImageUrl || null)}
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3 h-3 text-emerald-600" /> View Receipt
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 text-[10px] italic">No receipt</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-slate-600 max-w-xs truncate">{p.notes || '-'}</td>
+                        <td className="p-4 text-right text-slate-500 text-[11px] font-semibold">{p.recordedBy || 'Accounts'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: ASSIGNED TEAM */}
       {activeTab === 'team' && (
         <div className="space-y-4">
           {/* Team Roster Header Toolbar */}
@@ -1441,6 +1741,351 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
                 <button type="submit" className="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-extrabold rounded-xl text-xs hover:bg-emerald-700 shadow-md shadow-emerald-200 cursor-pointer">Save Task</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* RECORD PAYMENT MODAL (Requirement 8) */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in zoom-in-95">
+            <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <CreditCard className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="text-base font-black">Record Stage Payment</h3>
+                  <p className="text-[10px] text-slate-400 font-medium">{currentProject.customerName} ({currentProject.capacityKw} kW)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordPayment} className="p-6 space-y-3.5 text-xs bg-slate-50/50">
+              <div className="p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Total Contract</span>
+                  <p className="font-black text-slate-900">₹{(currentProject.totalCost || 250000).toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Pending Balance</span>
+                  <p className="font-black text-amber-600">
+                    ₹{Math.max(0, (currentProject.totalCost || 250000) - (currentProject.amountPaid || 0)).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Stage Milestone *</label>
+                <select
+                  value={selectedPaymentStage}
+                  onChange={e => setSelectedPaymentStage(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                >
+                  {PIPELINE_STAGES.map((s, idx) => (
+                    <option key={s} value={s}>
+                      Stage {idx + 1}: {s} {s === currentProject.status ? '(Current Active Stage)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Payment Amount (₹) *</label>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  step="any"
+                  value={paymentForm.amount}
+                  onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                  placeholder="e.g. 50000"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-black text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Payment Mode</label>
+                  <select
+                    value={paymentForm.mode}
+                    onChange={e => setPaymentForm({ ...paymentForm, mode: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                  >
+                    <option value="UPI / QR">UPI / QR</option>
+                    <option value="NEFT / RTGS">NEFT / RTGS</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Solar Loan Disbursement">Solar Loan Disbursement</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Reference / UTR</label>
+                  <input
+                    type="text"
+                    value={paymentForm.reference}
+                    onChange={e => setPaymentForm({ ...paymentForm, reference: e.target.value })}
+                    placeholder="e.g. UTR12345678"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Upload Receipt Proof (Optional)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = ev => setPaymentForm({ ...paymentForm, receiptImageUrl: ev.target?.result as string });
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-200 file:text-slate-800 hover:file:bg-slate-300"
+                />
+                {paymentForm.receiptImageUrl && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <img src={paymentForm.receiptImageUrl} alt="Receipt preview" className="w-10 h-10 object-cover rounded-lg border border-slate-200" />
+                    <span className="text-[10px] text-emerald-600 font-bold">✓ Receipt attached</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Notes / Remarks</label>
+                <input
+                  type="text"
+                  value={paymentForm.notes}
+                  onChange={e => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                  placeholder="e.g. Advance paid via GPay"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> Record Payment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2 -> STEP 3 STAGE IMAGES GATEKEEPER MODAL (Requirement 9) */}
+      {isStageImagesModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 animate-in zoom-in-95">
+            <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <Camera className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="text-base font-black">Step 2 → Step 3 Stage Photos Verification</h3>
+                  <p className="text-[10px] text-slate-400 font-medium">Verify Site Images, Material Images & After Images before advancing to Installation</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStageImagesModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs max-h-[70vh] overflow-y-auto bg-slate-50/50">
+              {/* Category 1: Site Images */}
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-black flex items-center justify-center text-xs">1</span>
+                    <h4 className="font-black text-slate-900 text-xs">Site Images (Pre-Installation / Roof Survey)</h4>
+                  </div>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-black uppercase",
+                    stageImagesData.siteImages.length > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                  )}>
+                    {stageImagesData.siteImages.length > 0 ? `✓ ${stageImagesData.siteImages.length} Image(s)` : 'Missing'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []) as File[];
+                      files.forEach((f: File) => {
+                        const r = new FileReader();
+                        r.onload = ev => {
+                          if (ev.target?.result) {
+                            setStageImagesData(prev => ({ ...prev, siteImages: [...prev.siteImages, ev.target!.result as string] }));
+                          }
+                        };
+                        r.readAsDataURL(f);
+                      });
+                    }}
+                    className="text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setStageImagesData(prev => ({ ...prev, siteImages: Array.from(new Set([...prev.siteImages, ...SAMPLE_SURVEY_PHOTOS])) }))}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg cursor-pointer shrink-0"
+                  >
+                    + Auto-Fill Sample
+                  </button>
+                </div>
+
+                {stageImagesData.siteImages.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pt-1">
+                    {stageImagesData.siteImages.map((img, i) => (
+                      <img key={i} src={img} alt="site" className="w-14 h-14 object-cover rounded-xl border border-slate-200 shrink-0" />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Category 2: Material Images */}
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-800 font-black flex items-center justify-center text-xs">2</span>
+                    <h4 className="font-black text-slate-900 text-xs">Material Images (Delivered Panels, Inverter & BOS)</h4>
+                  </div>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-black uppercase",
+                    stageImagesData.materialImages.length > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                  )}>
+                    {stageImagesData.materialImages.length > 0 ? `✓ ${stageImagesData.materialImages.length} Image(s)` : 'Missing'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []) as File[];
+                      files.forEach((f: File) => {
+                        const r = new FileReader();
+                        r.onload = ev => {
+                          if (ev.target?.result) {
+                            setStageImagesData(prev => ({ ...prev, materialImages: [...prev.materialImages, ev.target!.result as string] }));
+                          }
+                        };
+                        r.readAsDataURL(f);
+                      });
+                    }}
+                    className="text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setStageImagesData(prev => ({ ...prev, materialImages: Array.from(new Set([...prev.materialImages, ...SAMPLE_MATERIAL_PHOTOS])) }))}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg cursor-pointer shrink-0"
+                  >
+                    + Auto-Fill Sample
+                  </button>
+                </div>
+
+                {stageImagesData.materialImages.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pt-1">
+                    {stageImagesData.materialImages.map((img, i) => (
+                      <img key={i} src={img} alt="material" className="w-14 h-14 object-cover rounded-xl border border-slate-200 shrink-0" />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Category 3: After Images */}
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-xs">3</span>
+                    <h4 className="font-black text-slate-900 text-xs">After Images (Installed Array & Finished Wiring)</h4>
+                  </div>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-black uppercase",
+                    stageImagesData.afterImages.length > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                  )}>
+                    {stageImagesData.afterImages.length > 0 ? `✓ ${stageImagesData.afterImages.length} Image(s)` : 'Missing'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []) as File[];
+                      files.forEach((f: File) => {
+                        const r = new FileReader();
+                        r.onload = ev => {
+                          if (ev.target?.result) {
+                            setStageImagesData(prev => ({ ...prev, afterImages: [...prev.afterImages, ev.target!.result as string] }));
+                          }
+                        };
+                        r.readAsDataURL(f);
+                      });
+                    }}
+                    className="text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setStageImagesData(prev => ({ ...prev, afterImages: Array.from(new Set([...prev.afterImages, ...SAMPLE_INSTALLATION_PHOTOS])) }))}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg cursor-pointer shrink-0"
+                  >
+                    + Auto-Fill Sample
+                  </button>
+                </div>
+
+                {stageImagesData.afterImages.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pt-1">
+                    {stageImagesData.afterImages.map((img, i) => (
+                      <img key={i} src={img} alt="after" className="w-14 h-14 object-cover rounded-xl border border-slate-200 shrink-0" />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 bg-white flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsStageImagesModalOpen(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStage2To3Images}
+                className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" /> Save & Unlock Step 3
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -66,7 +66,8 @@ export default function ProposalGenerator() {
     roi: 22, // %
     timelineDays: 14,
     panelWarranty: 25,
-    inverterWarranty: 10
+    inverterWarranty: 10,
+    customMatter: 'We are pleased to submit this comprehensive solar engineering proposal for your premises. All components supplied conform to MNRE / ALMM certified specifications with 25-year performance warranty on solar PV modules and 10-year warranty on grid-tied inverters. Net metering and subsidy liaisoning are included.'
   });
 
   const netCost = proposalData.totalCost - proposalData.subsidy;
@@ -405,6 +406,20 @@ export default function ProposalGenerator() {
                 />
               </div>
             </div>
+
+            {/* Editable Proposal Matter & Scope */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="block text-[11px] font-black uppercase text-slate-700 mb-1">
+                Proposal Matter & Scope of Work
+              </label>
+              <textarea
+                rows={3}
+                value={proposalData.customMatter}
+                onChange={e => setProposalData({ ...proposalData, customMatter: e.target.value })}
+                placeholder="Enter custom proposal introduction or scope of work..."
+                className="w-full text-xs font-medium p-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none leading-relaxed"
+              />
+            </div>
           </div>
         </div>
 
@@ -514,6 +529,16 @@ export default function ProposalGenerator() {
                   <p className="text-lg font-black text-emerald-600">₹{emiAmount.toLocaleString()} <span className="text-xs font-normal text-slate-500">/ mo</span></p>
                 </div>
               </div>
+
+              {/* Proposal Custom Matter */}
+              {proposalData.customMatter && (
+                <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200/70 text-slate-700 text-[11px] leading-relaxed">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-900 block mb-0.5">
+                    Proposal Matter & Scope of Work
+                  </span>
+                  <p className="whitespace-pre-line font-medium">{proposalData.customMatter}</p>
+                </div>
+              )}
 
               {/* Guarantees & Terms */}
               <div className="grid grid-cols-2 gap-3 text-[11px]">

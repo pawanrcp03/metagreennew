@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import CRM from './components/CRM';
+import Customers from './components/Customers';
 import Inventory from './components/Inventory';
 import InventoryAndPO from './components/InventoryAndPO';
 import Projects from './components/Projects';
@@ -275,6 +276,8 @@ function AppContent() {
         return <Dashboard onNavigate={handleViewChange} />;
       case 'crm':
         return <CRM initialFilter={currentFilter} />;
+      case 'customers':
+        return <Customers onNavigate={handleViewChange} />;
       case 'inventory':
         return <InventoryAndPO initialTab="po" />;
       case 'projects':
@@ -326,8 +329,12 @@ function AppContent() {
       <nav className="h-16 bg-[#0f172a] text-white flex items-center justify-between px-4 md:px-6 shrink-0 z-50 border-b border-slate-800">
         {/* Left: Brand Logo & Title */}
         <div className="flex items-center gap-2.5 shrink-0">
-          {logos.appLogoUrl ? (
-            <img src={logos.appLogoUrl} alt="Logo" className="w-8 h-8 rounded-lg object-contain bg-slate-900 border border-slate-800 shadow-sm" />
+          {(logos.companyLogo || user?.companyLogo || user?.vendorAccount?.companyLogo) ? (
+            <img 
+              src={user?.companyLogo || user?.vendorAccount?.companyLogo || logos.companyLogo} 
+              alt={logos.companyName || 'Company Logo'} 
+              className="h-9 w-auto max-w-[150px] max-h-9 object-contain rounded-lg bg-white/10 p-1 border border-slate-700 shadow-sm" 
+            />
           ) : (
             <div className="w-7 h-7 sm:w-8 sm:h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-md">
               <Sun className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 font-bold" />
@@ -335,7 +342,7 @@ function AppContent() {
           )}
           <div>
             <span className="text-sm sm:text-lg font-black tracking-tight bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent block leading-tight">
-              {logos.companyName || 'Meta Green'}
+              {user?.companyName || user?.vendorAccount?.companyName || logos.companyName || 'Meta Green'}
             </span>
             <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium hidden xs:block">
               {logos.tagline || 'Solar Enterprise ERP'}

@@ -20,7 +20,11 @@ import {
   MapPin,
   Phone,
   Loader2,
-  RotateCcw
+  RotateCcw,
+  Check,
+  CheckCircle2,
+  Edit2,
+  X
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
@@ -46,6 +50,12 @@ interface QuotationVersion {
   versionNumber: number;
   date: string;
   status: 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected';
+  approvalStatus?: 'Pending Main Admin Approval' | 'Approved' | 'Rejected';
+  approvedBy?: string;
+  approvedAt?: any;
+  estimateMatter?: string;
+  invoiceMatter?: string;
+  createdBy?: string;
   items: QuotationItem[];
   labourCost: number;
   transportCost: number;
@@ -54,6 +64,9 @@ interface QuotationVersion {
   use7030Split?: boolean;
   totalValue: number;
 }
+
+export const DEFAULT_ESTIMATE_MATTER = 'This Estimate is valid for 15 days from the date of issuance. Scope of work encompasses rooftop shadow-free solar array layout, structural civil grouting, inverter synchronization, and DISCOM net meter processing. Structure designed for 150 km/h wind loads. Payment terms: 50% advance, 40% on material delivery, 10% post commissioning.';
+export const DEFAULT_INVOICE_MATTER = 'Certified that particulars given are true and correct. 70% Goods (SAC 85414300 @ 12%) and 30% Services (SAC 995411 @ 18%). Payments to be remitted directly to authorized bank account. Goods once sold will not be taken back. Subject to local jurisdiction.';
 
 const defaultItems: QuotationItem[] = [
   { id: '1', category: 'Panel', name: 'Solar Panel 400W Mono', quantity: 12, unitPrice: 12000 },
@@ -136,11 +149,16 @@ export default function QuotationBuilder() {
     return () => unsub();
   }, []);
 
+  const isMainAdmin = user?.role === 'Super Admin' || user?.role === 'Solar Company Admin';
+
   const activeVersion = versions.find(v => v.id === activeVersionId) || {
     id: 'draft',
     versionNumber: 1,
     date: new Date().toISOString().split('T')[0],
     status: 'Draft' as const,
+    approvalStatus: 'Approved' as const,
+    estimateMatter: DEFAULT_ESTIMATE_MATTER,
+    invoiceMatter: DEFAULT_INVOICE_MATTER,
     items: defaultItems,
     labourCost: 20000,
     transportCost: 5000,
@@ -164,6 +182,20 @@ export default function QuotationBuilder() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState('');
   const [isEmailing, setIsEmailing] = useState(false);
+  const [isEditMatterModalOpen, setIsEditMatterModalOpen] = useState(false);
+  const [editMatterData, setEditMatterData] = useState({
+    estimateMatter: activeVersion.estimateMatter || DEFAULT_ESTIMATE_MATTER,
+    invoiceMatter: activeVersion.invoiceMatter || DEFAULT_INVOICE_MATTER
+  });
+
+  useEffect(() => {
+    if (activeVersion) {
+      setEditMatterData({
+        estimateMatter: activeVersion.estimateMatter || DEFAULT_ESTIMATE_MATTER,
+        invoiceMatter: activeVersion.invoiceMatter || DEFAULT_INVOICE_MATTER
+      });
+    }
+  }, [activeVersionId, activeVersion?.estimateMatter, activeVersion?.invoiceMatter]);
 
   const subtotal = activeVersion.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   const totalBeforeTax = subtotal + activeVersion.labourCost + activeVersion.transportCost - activeVersion.discount;
@@ -299,19 +331,59 @@ export default function QuotationBuilder() {
         ...activeVersion,
         versionNumber: versions.length + 1,
         date: new Date().toISOString().split('T')[0],
-        status: 'Draft',
+        status: isMainAdmin ? 'Approved' : 'Pending Main Admin Approval',
+        approvalStatus: isMainAdmin ? 'Approved' : 'Pending Main Admin Approval',
+        approvedBy: isMainAdmin ? (user?.email || 'Main Admin') : '',
+        approvedAt: isMainAdmin ? serverTimestamp() : null,
+        estimateMatter: activeVersion.estimateMatter || DEFAULT_ESTIMATE_MATTER,
+        invoiceMatter: activeVersion.invoiceMatter || DEFAULT_INVOICE_MATTER,
+        createdBy: user?.email || 'sales@metagreen.solar',
         createdAt: serverTimestamp()
       };
       delete newVersion.id;
       const docRef = await addDoc(collection(db, 'quotationVersions'), newVersion);
       setActiveVersionId(docRef.id);
       setIsHistoryOpen(false);
-      alert(`✅ Created new quotation version v${newVersion.versionNumber}!`);
+      alert(isMainAdmin 
+        ? `✅ Created & Approved new estimate version v${newVersion.versionNumber}!` 
+        : `✅ Created estimate v${newVersion.versionNumber} - Sent to Main Admin for approval!`
+      );
     } catch (err) {
       console.error('Error creating version:', err);
       alert('Failed to create new version.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAdminApproveEstimate = async (versionId: string) => {
+    if (versionId === 'draft') return;
+    try {
+      await updateDoc(doc(db, 'quotationVersions', versionId), {
+        status: 'Approved',
+        approvalStatus: 'Approved',
+        approvedBy: user?.email || 'Main Admin',
+        approvedAt: serverTimestamp()
+      });
+      alert('✅ Estimate successfully approved by Main Admin!');
+    } catch (err: any) {
+      console.error('Error approving estimate:', err);
+      alert('Failed to approve estimate.');
+    }
+  };
+
+  const handleSaveEditedMatter = async () => {
+    if (!activeVersion.id || activeVersion.id === 'draft') return;
+    try {
+      await updateVersionInDb(activeVersion.id, {
+        estimateMatter: editMatterData.estimateMatter,
+        invoiceMatter: editMatterData.invoiceMatter
+      });
+      setIsEditMatterModalOpen(false);
+      alert('✅ Document matter updated successfully!');
+    } catch (err) {
+      console.error('Error saving matter:', err);
+      alert('Failed to update matter.');
     }
   };
 
@@ -728,10 +800,132 @@ export default function QuotationBuilder() {
             </div>
           </div>
 
+          {/* Document Matter & Terms Editor */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-emerald-600" /> Document Matter & Terms
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditMatterData({
+                    estimateMatter: activeVersion.estimateMatter || DEFAULT_ESTIMATE_MATTER,
+                    invoiceMatter: activeVersion.invoiceMatter || DEFAULT_INVOICE_MATTER
+                  });
+                  setIsEditMatterModalOpen(true);
+                }}
+                className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Edit2 className="w-3.5 h-3.5" /> Edit Matter
+              </button>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Estimate Scope & Terms</label>
+                <textarea
+                  rows={2}
+                  value={activeVersion.estimateMatter || DEFAULT_ESTIMATE_MATTER}
+                  onChange={e => updateVersionInDb(activeVersion.id, { estimateMatter: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none leading-relaxed"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Invoice Matter & Declarations</label>
+                <textarea
+                  rows={2}
+                  value={activeVersion.invoiceMatter || DEFAULT_INVOICE_MATTER}
+                  onChange={e => updateVersionInDb(activeVersion.id, { invoiceMatter: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none leading-relaxed"
+                />
+              </div>
+            </div>
+          </div>
+
         </div>
 
         {/* RIGHT COLUMN: Live Quotation Document Preview */}
         <div className="lg:col-span-6 sticky top-4 space-y-3">
+          {/* Main Admin Estimate Approval Banner */}
+          {activeVersion.approvalStatus === 'Pending Main Admin Approval' && (
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 bg-amber-200 text-amber-900 rounded font-black text-[10px] uppercase">
+                      Admin Approval Required
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">Estimate v{activeVersion.versionNumber}</span>
+                  </div>
+                  <p className="text-xs font-bold text-slate-900 mt-0.5">
+                    {isMainAdmin 
+                      ? 'Review estimate pricing, BOQ, and custom matter before giving final approval.'
+                      : 'This estimate is currently pending Main Admin approval. Exporting is locked until approved.'}
+                  </p>
+                </div>
+              </div>
+
+              {isMainAdmin ? (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => handleAdminApproveEstimate(activeVersion.id)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Approve
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditMatterData({
+                        estimateMatter: activeVersion.estimateMatter || DEFAULT_ESTIMATE_MATTER,
+                        invoiceMatter: activeVersion.invoiceMatter || DEFAULT_INVOICE_MATTER
+                      });
+                      setIsEditMatterModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit Matter
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteVersion(activeVersion.id, e)}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </button>
+                </div>
+              ) : (
+                <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-black rounded-lg shrink-0">
+                  ⏳ Awaiting Approval
+                </span>
+              )}
+            </div>
+          )}
+
+          {activeVersion.approvalStatus === 'Approved' && (
+            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-black">
+                  ✅ Estimate Approved by Main Admin {activeVersion.approvedBy ? `(${activeVersion.approvedBy})` : ''}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setEditMatterData({
+                    estimateMatter: activeVersion.estimateMatter || DEFAULT_ESTIMATE_MATTER,
+                    invoiceMatter: activeVersion.invoiceMatter || DEFAULT_INVOICE_MATTER
+                  });
+                  setIsEditMatterModalOpen(true);
+                }}
+                className="text-[11px] font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Edit2 className="w-3 h-3" /> Edit Matter
+              </button>
+            </div>
+          )}
+
           <div className="bg-slate-900 text-white p-3 rounded-xl flex items-center justify-between shadow-sm">
             <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
               <FileText className="w-4 h-4 text-emerald-400" /> Live Rendered Quotation View
@@ -739,7 +933,9 @@ export default function QuotationBuilder() {
             <div className="flex items-center gap-2">
               <button 
                 onClick={handleDownloadPDF}
-                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+                disabled={activeVersion.approvalStatus === 'Pending Main Admin Approval' && !isMainAdmin}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={activeVersion.approvalStatus === 'Pending Main Admin Approval' && !isMainAdmin ? 'Awaiting Main Admin Approval' : 'Download PDF'}
               >
                 <Download className="w-3.5 h-3.5" /> PDF
               </button>
@@ -844,6 +1040,16 @@ export default function QuotationBuilder() {
                   <span className="text-emerald-600">₹{grandTotal.toLocaleString()}</span>
                 </div>
               </div>
+
+              {/* Rendered Estimate Matter & Scope */}
+              {activeVersion.estimateMatter && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-700 leading-relaxed font-medium">
+                  <span className="font-black text-slate-900 uppercase tracking-wider block text-[9px] mb-0.5">
+                    Estimate Matter, Scope of Work & Validity Terms
+                  </span>
+                  <p className="whitespace-pre-line">{activeVersion.estimateMatter}</p>
+                </div>
+              )}
 
               <div className="border-t border-slate-200 pt-3 text-[10px] text-slate-400 text-center">
                 This is a computer-generated quotation from {logos.companyName || 'MetaGreen'} Solar ERP platform.
@@ -982,6 +1188,72 @@ export default function QuotationBuilder() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT MATTER MODAL */}
+      {isEditMatterModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95">
+            <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <FileText className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-black">Edit Document Matter (Content)</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditMatterModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs bg-slate-50/50 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 uppercase mb-1">
+                  1. Estimate Scope of Work & Terms (Printed on Estimate)
+                </label>
+                <textarea
+                  rows={4}
+                  value={editMatterData.estimateMatter}
+                  onChange={e => setEditMatterData({ ...editMatterData, estimateMatter: e.target.value })}
+                  className="w-full p-3 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 leading-relaxed"
+                  placeholder="Enter estimate scope, payment milestones, validity..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 uppercase mb-1">
+                  2. Invoice Legal Declarations & Bank Matter (Printed on Invoice)
+                </label>
+                <textarea
+                  rows={4}
+                  value={editMatterData.invoiceMatter}
+                  onChange={e => setEditMatterData({ ...editMatterData, invoiceMatter: e.target.value })}
+                  className="w-full p-3 border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 leading-relaxed"
+                  placeholder="Enter invoice legal text, warranty declarations, remittance info..."
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 bg-white flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsEditMatterModalOpen(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditedMatter}
+                className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" /> Save Matter
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -110,6 +110,10 @@ export default function Finance() {
     setIsInvoiceModalOpen(false);
   };
 
+  const [selectedReceiptImage, setSelectedReceiptImage] = useState<string | null>(null);
+  const [financeTx, setFinanceTx] = useState<any[]>([]);
+  const [ledgerTx, setLedgerTx] = useState<any[]>([]);
+
   // Forms State
   const [newTx, setNewTx] = useState({
     customer: '',
@@ -119,10 +123,12 @@ export default function Finance() {
     category: 'Income',
     expenseType: 'Material & Hardware Purchase',
     gstEnabled: false,
-    notes: ''
+    notes: '',
+    receiptImageUrl: ''
   });
 
   const [expenseTypes, setExpenseTypes] = useState<string[]>([
+    'Employee Commission',
     'Material & Hardware Purchase',
     'Labor & Installation Wages',
     'Logistics & Transport',
@@ -165,7 +171,32 @@ export default function Finance() {
   useEffect(() => {
     const qTx = query(collection(db, 'financeTransactions'), orderBy('date', 'desc'));
     const unsubTx = onSnapshot(qTx, (snapshot) => {
-      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setFinanceTx(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const qLedger = query(collection(db, 'transactions'));
+    const unsubLedger = onSnapshot(qLedger, (snapshot) => {
+      const items = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          displayId: d.displayId || `TXN-${doc.id.slice(-5).toUpperCase()}`,
+          customer: d.customer || d.customerName || d.projectName || (d.employeeName ? `${d.employeeName} (Commission)` : 'Solar Client'),
+          projectId: d.projectId || null,
+          amount: d.amount || 0,
+          type: d.type === 'Income' ? (d.stage || 'Advance') : (d.expenseType || 'Expense'),
+          category: d.type === 'Expense' ? 'Expense' : (d.category === 'Expense' ? 'Expense' : 'Income'),
+          expenseType: d.expenseType || (d.type === 'Expense' ? 'Employee Commission' : null),
+          gst: d.gst || 0,
+          status: d.status || 'Completed',
+          date: d.date || new Date().toISOString().split('T')[0],
+          receiptImageUrl: d.receiptImageUrl || '',
+          employeeName: d.employeeName || '',
+          employeeId: d.employeeId || '',
+          notes: d.notes || ''
+        };
+      });
+      setLedgerTx(items);
     });
 
     const qLoans = query(collection(db, 'financeLoans'), orderBy('date', 'desc'));
@@ -198,6 +229,7 @@ export default function Finance() {
 
     return () => { 
       unsubTx(); 
+      unsubLedger();
       unsubLoans(); 
       unsubExpTypes(); 
       unsubProjects();
@@ -205,6 +237,17 @@ export default function Finance() {
       unsubInventory();
     };
   }, []);
+
+  // Merge financeTransactions and transactions ledger without duplicates
+  useEffect(() => {
+    const combined = [...financeTx];
+    ledgerTx.forEach(lt => {
+      if (!combined.some(c => c.id === lt.id)) {
+        combined.push(lt);
+      }
+    });
+    setTransactions(combined);
+  }, [financeTx, ledgerTx]);
 
   const handleAddExpenseType = async () => {
     if (!customExpenseTypeInput.trim()) return;
@@ -254,6 +297,8 @@ export default function Finance() {
           category: newTx.category,
           expenseType: newTx.category === 'Expense' ? (newTx.expenseType || 'Other Expenses') : null,
           gst: gstAmount,
+          receiptImageUrl: newTx.receiptImageUrl || '',
+          notes: newTx.notes || ''
         });
       } else {
         const newId = `TX-2026-${String(transactions.length + 1).padStart(3, '0')}`;
@@ -266,6 +311,8 @@ export default function Finance() {
           category: newTx.category,
           expenseType: newTx.category === 'Expense' ? (newTx.expenseType || 'Other Expenses') : null,
           gst: gstAmount,
+          receiptImageUrl: newTx.receiptImageUrl || '',
+          notes: newTx.notes || '',
           status: 'Completed',
           date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'),
           createdAt: serverTimestamp()
@@ -726,11 +773,21 @@ export default function Finance() {
                         <Receipt className="w-5 h-5 text-slate-400" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <h4 className="font-bold text-slate-900">{t.customer}</h4>
                           {t.expenseType && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded text-[10px] font-black border",
+                              t.expenseType === 'Employee Commission' 
+                                ? "bg-purple-50 text-purple-800 border-purple-200" 
+                                : "bg-amber-50 text-amber-800 border-amber-200"
+                            )}>
                               {t.expenseType}
+                            </span>
+                          )}
+                          {t.employeeName && t.expenseType === 'Employee Commission' && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-50 text-indigo-800 border border-indigo-200">
+                              Employee: {t.employeeName}
                             </span>
                           )}
                           {linkedProj && (
@@ -738,10 +795,20 @@ export default function Finance() {
                               Project: {linkedProj.customerName}
                             </span>
                           )}
+                          {t.receiptImageUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceiptImage(t.receiptImageUrl)}
+                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Eye className="w-3 h-3 text-emerald-600" /> View Bill / Receipt
+                            </button>
+                          )}
                         </div>
                         <div className="flex items-center gap-4 text-xs font-medium text-slate-500 mt-1">
                           <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t.date}</span>
                           <span className="font-bold uppercase tracking-wider">{t.displayId || t.id}</span>
+                          {t.notes && <span className="text-slate-400 italic font-normal truncate max-w-xs">{t.notes}</span>}
                         </div>
                       </div>
                     </div>
@@ -1093,6 +1160,54 @@ export default function Finance() {
                 </div>
               )}
 
+              {/* Bill / Receipt Image Upload (Requirement 11) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Upload Bill / Receipt Image {newTx.category === 'Expense' ? '(Expense Proof)' : ''}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = ev => {
+                          setNewTx(prev => ({ ...prev, receiptImageUrl: ev.target?.result as string }));
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-800 hover:file:bg-slate-200"
+                  />
+                  {newTx.receiptImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setNewTx(prev => ({ ...prev, receiptImageUrl: '' }))}
+                      className="px-2.5 py-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg shrink-0 cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                {newTx.receiptImageUrl && (
+                  <div className="mt-2 flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                    <img src={newTx.receiptImageUrl} alt="Receipt preview" className="w-12 h-12 object-cover rounded-lg border border-slate-200 shadow-xs" />
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-800">Bill proof attached</p>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReceiptImage(newTx.receiptImageUrl)}
+                        className="text-[10px] text-emerald-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="w-3 h-3" /> Preview full image
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-4 flex gap-3 border-t border-slate-100 shrink-0">
                 <button 
                   type="button" 
@@ -1109,6 +1224,30 @@ export default function Finance() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* RECEIPT LIGHTBOX MODAL */}
+      {selectedReceiptImage && (
+        <div 
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
+          onClick={() => setSelectedReceiptImage(null)}
+        >
+          <div 
+            className="relative max-w-2xl max-h-[85vh] bg-white rounded-3xl overflow-hidden shadow-2xl p-3 border border-slate-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100 mb-2">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Bill / Receipt Proof</span>
+              <button
+                onClick={() => setSelectedReceiptImage(null)}
+                className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <img src={selectedReceiptImage} alt="Receipt Full View" className="w-full h-auto max-h-[75vh] object-contain rounded-xl" />
           </div>
         </div>
       )}

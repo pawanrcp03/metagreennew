@@ -131,21 +131,34 @@ export interface InventoryItem {
   id: string;
   name: string;
   category: string;
-  type?: 'Panel' | 'Wire' | 'Inverter' | 'Battery' | 'Structure' | 'Other';
+  type?: 'Panel' | 'Wire' | 'Inverter' | 'Battery' | 'Structure' | 'Accessories' | 'Other';
   manufacturer?: string;
   description?: string;
   weight?: number;
   weightUnit?: 'KG' | 'TON';
   quantity: number;
-  unit: 'KW' | 'MW' | 'MTR' | 'TON' | 'KG' | 'PCS' | string;
+  availableQuantity?: number;
+  reservedQuantity?: number;
+  soldQuantity?: number;
+  unit: 'KW' | 'MW' | 'MTR' | 'TON' | 'KG' | 'PCS' | 'UNIT' | string;
+  size?: number;
+  wattPrice?: number;
   price?: number;
+  purchasePrice?: number;
+  sellingPrice?: number;
+  availableForSelling?: boolean;
   gst?: number;
-  pricingBasis?: 'Per Unit' | 'Per Weight';
+  pricingBasis?: 'Per Unit' | 'Per Weight' | 'Per Meter';
   minThreshold: number;
   serialNumber?: string;
   warranty?: string;
   vendor?: string;
   vendorId?: string;
+  vendorType?: 'Registered' | 'Unregistered';
+  stockOwner?: string;
+  stockOwnerName?: string;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface Transaction {
@@ -156,6 +169,9 @@ export interface Transaction {
   amount: number;
   status: 'Pending' | 'Completed' | 'Failed';
   date: any;
+  employeeId?: string;
+  employeeName?: string;
+  receiptImageUrl?: string;
 }
 
 export type UserRole = 
@@ -193,4 +209,4 @@ export interface AuthenticatedUser {
   permissions?: RolePermissions;
 }
 
-export type ViewType = 'dashboard' | 'crm' | 'site-survey' | 'solar-design' | 'proposal' | 'quotation' | 'subsidy' | 'procurement' | 'projects' | 'inventory' | 'work-orders' | 'finance' | 'support' | 'warranty' | 'documents' | 'compliance' | 'hr' | 'vendors' | 'reports' | 'portal' | 'settings' | 'tax-invoice';
+export type ViewType = 'dashboard' | 'crm' | 'customers' | 'site-survey' | 'solar-design' | 'proposal' | 'quotation' | 'subsidy' | 'procurement' | 'projects' | 'inventory' | 'work-orders' | 'finance' | 'support' | 'warranty' | 'documents' | 'compliance' | 'hr' | 'vendors' | 'reports' | 'portal' | 'settings' | 'tax-invoice';

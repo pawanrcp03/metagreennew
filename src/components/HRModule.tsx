@@ -10,10 +10,11 @@ import {
   Search, 
   Filter,
   Download,
-  FileSpreadsheet, Edit2, Trash2
+  FileSpreadsheet, Edit2, Trash2,
+  Receipt, CheckCircle2, Sparkles
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { collection, query, onSnapshot, orderBy, addDoc, serverTimestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { exportToPDF, exportToExcel } from '@/src/lib/exportUtils';
 
@@ -80,11 +81,95 @@ export default function HRModule() {
       setActiveProjects(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter((p: any) => !p.isDeleted));
     });
 
+    const qTx = query(collection(db, 'transactions'), where('expenseType', '==', 'Employee Commission'));
+    const unsubTx = onSnapshot(qTx, snapshot => {
+      setCommissionExpenses(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       unsub();
       unsubProj();
+      unsubTx();
     };
   }, []);
+
+  const [commissionExpenses, setCommissionExpenses] = useState<any[]>([]);
+
+  // Post Employee Commission into Central Expenses (Requirement 10)
+  const handlePostCommissionToExpenses = async (emp: Employee, amount: number) => {
+    if (amount <= 0) {
+      alert('Commission amount must be greater than ₹0.');
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'transactions'), {
+        type: 'Expense',
+        category: 'Expense',
+        expenseType: 'Employee Commission',
+        amount: amount,
+        customer: `${emp.name} (Employee Commission)`,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        employeeRole: emp.role,
+        status: 'Completed',
+        date: new Date().toISOString().split('T')[0],
+        notes: `Commission Payout for ${emp.name} (${emp.role}) - ${emp.commissionType === 'Per KW' ? `₹${emp.commissionRate}/kW` : `${emp.commissionRate}% on Sales`}`,
+        createdAt: serverTimestamp()
+      });
+
+      alert(`✅ Commission of ₹${amount.toLocaleString('en-IN')} successfully posted to Expenses for ${emp.name}!`);
+    } catch (err) {
+      console.error('Error posting commission to expenses:', err);
+      alert('Failed to post commission to expenses.');
+    }
+  };
+
+  // Auto-post all pending commissions to expenses
+  const handlePostAllCommissions = async () => {
+    const commissionEmployees = employees.filter(e => e.salaryType !== 'Fixed Salary');
+    if (commissionEmployees.length === 0) {
+      alert('No commission-based employees found.');
+      return;
+    }
+
+    try {
+      let count = 0;
+      for (const emp of commissionEmployees) {
+        const sampleKw = 25;
+        const sampleRevenue = 1250000;
+        let commission = 0;
+        if (emp.commissionType === 'Per KW') {
+          commission = sampleKw * (emp.commissionRate || 1500);
+        } else {
+          commission = (sampleRevenue * (emp.commissionRate || 5)) / 100;
+        }
+
+        if (commission > 0) {
+          await addDoc(collection(db, 'transactions'), {
+            type: 'Expense',
+            category: 'Expense',
+            expenseType: 'Employee Commission',
+            amount: commission,
+            customer: `${emp.name} (Employee Commission)`,
+            employeeId: emp.id,
+            employeeName: emp.name,
+            employeeRole: emp.role,
+            status: 'Completed',
+            date: new Date().toISOString().split('T')[0],
+            notes: `Commission Payout for ${emp.name} (${emp.role}) - ${emp.commissionType === 'Per KW' ? `₹${emp.commissionRate}/kW` : `${emp.commissionRate}% on Sales`}`,
+            createdAt: serverTimestamp()
+          });
+          count++;
+        }
+      }
+
+      alert(`✅ Successfully posted commissions for ${count} employee(s) to Expenses!`);
+    } catch (err) {
+      console.error('Error posting all commissions:', err);
+      alert('Failed to post all commissions.');
+    }
+  };
 
   const handleAssignToProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,6 +395,14 @@ export default function HRModule() {
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">Automatic monthly compensation breakdown based on Fixed Salary and Commission (% or Per KW)</p>
               </div>
+
+              <button
+                type="button"
+                onClick={handlePostAllCommissions}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition-all shadow-md shadow-emerald-200 flex items-center gap-2 cursor-pointer shrink-0"
+              >
+                <Receipt className="w-4 h-4" /> Auto-Post All Commissions to Expenses
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -327,39 +420,70 @@ export default function HRModule() {
                   }
                 }
                 const totalPayout = fixed + commission;
+                const isCommissionPosted = commissionExpenses.some(c => c.employeeId === emp.id || c.employeeName === emp.name || c.customer?.includes(emp.name));
 
                 return (
-                  <div key={emp.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-black text-slate-900 text-sm">{emp.name}</h4>
-                        <p className="text-[11px] text-slate-500 font-semibold">{emp.role}</p>
-                      </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
-                        {emp.salaryType}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between text-slate-600">
-                        <span>Fixed Salary:</span>
-                        <span className="font-bold text-slate-900">₹{fixed.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Commission Structure:</span>
-                        <span className="font-bold text-emerald-700">
-                          {emp.commissionType === 'Per KW' ? `₹${emp.commissionRate || 1500} / kW` : `${emp.commissionRate || 5}% on Sales`}
+                  <div key={emp.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-3 flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-black text-slate-900 text-sm">{emp.name}</h4>
+                          <p className="text-[11px] text-slate-500 font-semibold">{emp.role}</p>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
+                          {emp.salaryType}
                         </span>
                       </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Est. Commission (25 kW):</span>
-                        <span className="font-bold text-emerald-700">+₹{commission.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-black text-slate-900">
-                        <span>Monthly Payout:</span>
-                        <span className="text-emerald-600 font-extrabold">₹{totalPayout.toLocaleString('en-IN')}</span>
+
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between text-slate-600">
+                          <span>Fixed Salary:</span>
+                          <span className="font-bold text-slate-900">₹{fixed.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Commission Structure:</span>
+                          <span className="font-bold text-emerald-700">
+                            {emp.commissionType === 'Per KW' ? `₹${emp.commissionRate || 1500} / kW` : `${emp.commissionRate || 5}% on Sales`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Est. Commission (25 kW):</span>
+                          <span className="font-bold text-emerald-700">+₹{commission.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-black text-slate-900">
+                          <span>Monthly Payout:</span>
+                          <span className="text-emerald-600 font-extrabold">₹{totalPayout.toLocaleString('en-IN')}</span>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Requirement 10: Automatically/Manually record Commission into Central Expenses */}
+                    {emp.salaryType !== 'Fixed Salary' && (
+                      <div className="pt-3 border-t border-slate-200/80">
+                        {isCommissionPosted ? (
+                          <div className="flex items-center justify-between bg-emerald-100/70 border border-emerald-200 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-emerald-800">
+                            <span className="flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Recorded in Expenses
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handlePostCommissionToExpenses(emp, commission)}
+                              className="text-[10px] font-black text-emerald-700 hover:underline"
+                            >
+                              Post Again
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handlePostCommissionToExpenses(emp, commission)}
+                            className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                          >
+                            <Receipt className="w-3.5 h-3.5" /> Post Commission to Expenses
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

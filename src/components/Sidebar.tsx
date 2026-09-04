@@ -114,6 +114,14 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
           roles: ['Super Admin', 'Solar Company Admin', 'Regional Manager', 'Sales Executive', 'Vendor', 'Vendor Employee', 'Installer', 'Solar Installer', 'Survey Engineer', 'Project Manager']
         },
         {
+          id: 'customers',
+          label: 'Customers',
+          subHeader: 'Accounts & Client Directory',
+          description: 'Client profiles, system capacities, sanctioned loads & project histories',
+          icon: UserCheck,
+          roles: ['Super Admin', 'Solar Company Admin', 'Regional Manager', 'Sales Executive', 'Vendor', 'Vendor Employee', 'Installer', 'Solar Installer', 'Project Manager']
+        },
+        {
           id: 'solar-design',
           label: 'Design',
           subHeader: 'PV System Design & 3D Rooftop',
@@ -157,7 +165,7 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
     },
     {
       id: 'project-supply-group',
-      title: 'Project & Supply',
+      title: 'Inventory & Supply',
       badge: 'Supply',
       icon: Package,
       items: [

@@ -87,7 +87,8 @@ export default function TaxInvoiceGenerator() {
         cgstRate: 9.0,
         sgstRate: 9.0
       }
-    ]
+    ],
+    customMatter: 'Subject to local jurisdiction. Certified that the particulars given above are true and correct and the amount indicated represents the price actually charged. Goods once sold will not be taken back. Payment to be remitted directly via NEFT/RTGS/UPI. 70% Goods (SAC 85414300 @ 12%) and 30% Services (SAC 995411 @ 18%).'
   });
 
   const subtotalTaxable = invoiceForm.items.reduce((sum, item) => sum + item.taxableValue, 0);
@@ -481,6 +482,20 @@ export default function TaxInvoiceGenerator() {
               ))}
             </div>
           </div>
+
+          {/* Tax Invoice Matter / Statutory Declarations */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2">
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-emerald-600" /> Tax Invoice Matter & Declarations
+            </h3>
+            <textarea
+              rows={3}
+              value={invoiceForm.customMatter}
+              onChange={e => setInvoiceForm({ ...invoiceForm, customMatter: e.target.value })}
+              className="w-full text-xs font-medium p-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none leading-relaxed"
+              placeholder="Statutory declarations, 70:30 GST breakdown, jurisdiction..."
+            />
+          </div>
         </div>
 
         {/* RIGHT COLUMN: Live GST Tax Invoice Document Preview */}
@@ -602,6 +617,16 @@ export default function TaxInvoiceGenerator() {
                   </div>
                 </div>
               </div>
+
+              {/* Tax Invoice Custom Matter / Terms */}
+              {invoiceForm.customMatter && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[10px] text-slate-600 leading-relaxed font-medium">
+                  <span className="font-bold text-slate-900 block text-[9px] uppercase tracking-wider mb-0.5">
+                    Declarations & Legal Terms
+                  </span>
+                  <p className="whitespace-pre-line">{invoiceForm.customMatter}</p>
+                </div>
+              )}
 
               <div className="border-t border-slate-200 pt-3 flex justify-between items-center text-[9px] text-slate-400">
                 <p>Mode of Payment: {invoiceForm.modeOfPayment}</p>
