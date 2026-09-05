@@ -858,7 +858,7 @@ export default function SubsidyManagement() {
       
       {/* MANUAL ADD / EDIT MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
               <div>
@@ -911,7 +911,7 @@ export default function SubsidyManagement() {
 
       {/* SUBSIDY DOCUMENT VERIFICATION MODAL */}
       {docModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
               <div>
@@ -989,7 +989,7 @@ export default function SubsidyManagement() {
       {/* REQUIREMENT 13: SUBSIDY STAGE 2 -> STAGE 3 / MOVING TO STAGE 2 MANDATORY DOCUMENTS MODAL */}
       {stageDocGatekeeperModal.isOpen && stageDocGatekeeperModal.app && (
         <div 
-          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4 overflow-y-auto"
           onClick={() => setStageDocGatekeeperModal({ isOpen: false, app: null, targetStageIndex: 2 })}
         >
           <div 

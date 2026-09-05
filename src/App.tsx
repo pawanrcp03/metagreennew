@@ -16,7 +16,8 @@ import SiteSurvey from './components/SiteSurvey';
 import SolarDesign from './components/SolarDesign';
 import ProposalGenerator from './components/ProposalGenerator';
 import QuotationBuilder from './components/QuotationBuilder';
-import QuoteAndInvoice from './components/QuoteAndInvoice';
+import InvoiceBuilder from './components/InvoiceBuilder';
+import TaxInvoiceGenerator from './components/TaxInvoiceGenerator';
 import SubsidyManagement from './components/SubsidyManagement';
 import Procurement from './components/Procurement';
 import WorkOrders from './components/WorkOrders';
@@ -29,7 +30,6 @@ import HRModule from './components/HRModule';
 import VendorPortal from './components/VendorPortal';
 import Reporting from './components/Reporting';
 import MasterSettings from './components/MasterSettings';
-import TaxInvoiceGenerator from './components/TaxInvoiceGenerator';
 import Login from './components/Login';
 import LandingPage from './components/LandingPage';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -289,9 +289,11 @@ function AppContent() {
       case 'solar-design':
         return <SolarDesign />;
       case 'proposal':
-        return <QuoteAndInvoice initialSubTab="proposal" />;
+        return <ProposalGenerator />;
       case 'quotation':
-        return <QuoteAndInvoice initialSubTab="quotation" />;
+        return <QuotationBuilder />;
+      case 'invoice':
+        return <InvoiceBuilder />;
       case 'tax-invoice':
         return <TaxInvoiceGenerator />;
       case 'subsidy':
@@ -324,9 +326,9 @@ function AppContent() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white font-sans text-slate-800 overflow-hidden relative">
+    <div className="flex flex-col h-screen bg-white font-sans text-slate-800 overflow-hidden">
       {/* Top Navigation Bar */}
-      <nav className="h-16 bg-[#0f172a] text-white flex items-center justify-between px-4 md:px-6 shrink-0 z-50 border-b border-slate-800">
+      <nav className="h-16 bg-[#0f172a] text-white flex items-center justify-between px-4 md:px-6 shrink-0 relative z-[60] border-b border-slate-800">
         {/* Left: Brand Logo & Title */}
         <div className="flex items-center gap-2.5 shrink-0">
           {(logos.companyLogo || user?.companyLogo || user?.vendorAccount?.companyLogo) ? (
@@ -437,7 +439,7 @@ function AppContent() {
       {/* Main Navigation Bar with Dropdowns */}
       <Sidebar currentView={currentView} setView={handleViewChange} userRole={user.role} />
       
-      <main className="flex-1 overflow-y-auto bg-slate-50 relative z-0 min-h-0">
+      <main className="flex-1 overflow-y-auto bg-slate-50 min-h-0">
         <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
           {renderView()}
         </div>
@@ -457,7 +459,7 @@ function AppContent() {
 
       {/* Support Contact Drawer / Modal */}
       {isSupportDrawerOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-900 text-white">
               <div className="flex items-center gap-2">
@@ -512,7 +514,7 @@ function AppContent() {
       {/* Profile Settings Modal with Dynamic Logo Upload & Update */}
       {isProfileModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsProfileModalOpen(false)}
         >
           <div 

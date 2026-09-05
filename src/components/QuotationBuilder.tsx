@@ -441,7 +441,7 @@ export default function QuotationBuilder() {
         heightLeft -= pageHeight;
       }
       
-      pdf.save(`Quotation_GES25-${activeVersion.versionNumber.toString().padStart(6, '0')}.pdf`);
+      pdf.save(`Estimate_GES25-${activeVersion.versionNumber.toString().padStart(6, '0')}.pdf`);
     } catch (err) {
       console.error('Error generating PDF', err);
       alert('Error generating PDF.');
@@ -479,10 +479,10 @@ export default function QuotationBuilder() {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 lg:p-5 rounded-2xl border border-slate-100 shadow-sm">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <Calculator className="w-6 h-6 text-emerald-600" /> Quotation Builder
+            <Calculator className="w-6 h-6 text-emerald-600" /> Estimate Builder
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Build quotes with dynamic company logo and direct walk-in customer addition
+            Build system material & labor estimates with dynamic branding and walk-in lead addition
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -515,7 +515,7 @@ export default function QuotationBuilder() {
       {isHistoryOpen && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-2 animate-in slide-in-from-top-2">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Saved Quotation Versions</h3>
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Saved Estimate Versions</h3>
             <span className="text-[10px] text-slate-500 font-medium">Click version to switch, or click trash to delete</span>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2">
@@ -567,7 +567,7 @@ export default function QuotationBuilder() {
         <div className="lg:col-span-6 space-y-5">
           <div className="bg-slate-900 text-white p-3 rounded-xl flex items-center justify-between shadow-sm">
             <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-emerald-400" /> Quotation Line Items & Tax Split
+              <Calculator className="w-4 h-4 text-emerald-400" /> Estimate Line Items & Tax Split
             </span>
             <span className="text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30">
               Live Editor
@@ -1063,7 +1063,7 @@ export default function QuotationBuilder() {
       {/* QUICK ADD WALK-IN CUSTOMER MODAL */}
       {isWalkinModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsWalkinModalOpen(false)}
         >
           <div 
@@ -1194,7 +1194,7 @@ export default function QuotationBuilder() {
 
       {/* EDIT MATTER MODAL */}
       {isEditMatterModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95">
             <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
               <div className="flex items-center gap-2.5">

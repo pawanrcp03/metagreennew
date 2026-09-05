@@ -1635,7 +1635,7 @@ export default function Procurement() {
 
       {/* CREATE PO / RFQ MODAL */}
       {isPoModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Fixed Header */}
             <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
@@ -2077,7 +2077,7 @@ export default function Procurement() {
 
       {/* ADD VENDOR MODAL */}
       {isVendorModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 font-sans">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
               <div>
@@ -2270,7 +2270,7 @@ export default function Procurement() {
 
       {/* QUICK ADD VENDOR MODAL (ON-THE-SPOT CREATION WITH MULTIPLE SELECT CATEGORIES & CUSTOM CATEGORY CREATION) */}
       {isQuickAddVendorOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 font-sans">
             <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex justify-between items-center">
               <div>

@@ -964,7 +964,7 @@ export default function Finance() {
       {/* RECORD PAYMENT / EXPENSE MODAL */}
       {isTxModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => { setIsTxModalOpen(false); setEditingTxId(null); }}
         >
           <div 
@@ -1255,7 +1255,7 @@ export default function Finance() {
       {/* PROJECT FINANCIAL & INVENTORY BREAKDOWN MODAL */}
       {isBreakdownModalOpen && selectedProjectBreakdown && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsBreakdownModalOpen(false)}
         >
           <div 
@@ -1388,7 +1388,7 @@ export default function Finance() {
       {/* LOAN MODAL */}
       {isLoanModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => { setIsLoanModalOpen(false); setEditingLoanId(null); }}
         >
           <div 
@@ -1482,7 +1482,7 @@ export default function Finance() {
       {/* INVOICE PDF MODAL */}
       {isInvoiceModalOpen && selectedTxForInvoice && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsInvoiceModalOpen(false)}
         >
           <div 

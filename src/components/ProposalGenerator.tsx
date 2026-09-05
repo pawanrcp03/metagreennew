@@ -566,7 +566,7 @@ export default function ProposalGenerator() {
       {/* QUICK ADD WALK-IN CUSTOMER MODAL */}
       {isWalkinModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsWalkinModalOpen(false)}
         >
           <div 

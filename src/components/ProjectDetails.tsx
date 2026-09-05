@@ -1364,7 +1364,7 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
 
       {/* PHOTO UPLOAD MODAL FOR SITE SURVEY / INSTALLATION COMPLETED */}
       {photoModalType && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 font-sans text-white">
             <div className="p-5 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
               <div>
@@ -1431,7 +1431,7 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
       {/* ASSIGN EMPLOYEE MODAL */}
       {isAssignStaffModalOpen && selectedStaffForAssign && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsAssignStaffModalOpen(false)}
         >
           <div 
@@ -1582,7 +1582,7 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
       {/* ADD NEW TEAM MEMBER MODAL */}
       {isAddStaffModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsAddStaffModalOpen(false)}
         >
           <div 
@@ -1685,7 +1685,7 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
       {/* ADD TASK MODAL */}
       {isTaskModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-4 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
           onClick={() => setIsTaskModalOpen(false)}
         >
           <div 
@@ -1747,7 +1747,7 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
 
       {/* RECORD PAYMENT MODAL (Requirement 8) */}
       {isPaymentModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in zoom-in-95">
             <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
               <div className="flex items-center gap-2.5">
@@ -1893,7 +1893,7 @@ export default function ProjectDetails({ project, onBack }: ProjectDetailsProps)
 
       {/* STEP 2 -> STEP 3 STAGE IMAGES GATEKEEPER MODAL (Requirement 9) */}
       {isStageImagesModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 animate-in zoom-in-95">
             <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
               <div className="flex items-center gap-2.5">

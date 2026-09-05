@@ -34,6 +34,14 @@ export interface Lead {
   roofImagesUrls?: string[];
   createdAt: any;
   isDeleted?: boolean;
+  assignedTo?: string;
+  assignedToId?: string;
+  createdBy?: string;
+  creatorName?: string;
+  vendor?: string;
+  salesRep?: string;
+  installerId?: string;
+  region?: string;
 }
 
 export type ProjectStatus = 
@@ -209,4 +217,4 @@ export interface AuthenticatedUser {
   permissions?: RolePermissions;
 }
 
-export type ViewType = 'dashboard' | 'crm' | 'customers' | 'site-survey' | 'solar-design' | 'proposal' | 'quotation' | 'subsidy' | 'procurement' | 'projects' | 'inventory' | 'work-orders' | 'finance' | 'support' | 'warranty' | 'documents' | 'compliance' | 'hr' | 'vendors' | 'reports' | 'portal' | 'settings' | 'tax-invoice';
+export type ViewType = 'dashboard' | 'crm' | 'customers' | 'site-survey' | 'solar-design' | 'proposal' | 'quotation' | 'invoice' | 'tax-invoice' | 'subsidy' | 'procurement' | 'projects' | 'inventory' | 'work-orders' | 'finance' | 'support' | 'warranty' | 'documents' | 'compliance' | 'hr' | 'vendors' | 'reports' | 'portal' | 'settings';

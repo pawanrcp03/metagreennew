@@ -48,10 +48,10 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       const uName = (user.name || '').toLowerCase();
       const uEmail = (user.email || '').toLowerCase();
       return (
-        (lead as any).vendor?.toLowerCase().includes(vendorName) ||
-        (lead as any).assignedTo?.toLowerCase().includes(uName) ||
-        (lead as any).assignedTo?.toLowerCase().includes(vendorName) ||
-        (lead as any).createdBy === uEmail ||
+        lead.vendor?.toLowerCase().includes(vendorName) ||
+        lead.assignedTo?.toLowerCase().includes(uName) ||
+        lead.assignedTo?.toLowerCase().includes(vendorName) ||
+        lead.createdBy === uEmail ||
         true
       );
     }
@@ -61,10 +61,10 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       const uName = (user.name || '').toLowerCase();
       const uEmail = (user.email || '').toLowerCase();
       return (
-        (lead as any).assignedTo?.toLowerCase().includes(uName) ||
-        (lead as any).assignedTo?.toLowerCase().includes('installer') ||
-        (lead as any).installerId === user.uid ||
-        (lead as any).createdBy === uEmail ||
+        lead.assignedTo?.toLowerCase().includes(uName) ||
+        lead.assignedTo?.toLowerCase().includes('installer') ||
+        lead.installerId === user.uid ||
+        lead.createdBy === uEmail ||
         true
       );
     }
@@ -74,10 +74,10 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
     const uEmail = (user.email || '').toLowerCase();
 
     return (
-      (lead as any).assignedTo?.toLowerCase().includes(uName) ||
-      (lead as any).salesRep?.toLowerCase().includes(uName) ||
-      (lead as any).createdBy === uEmail ||
-      (lead as any).region === (user as any).region ||
+      lead.assignedTo?.toLowerCase().includes(uName) ||
+      lead.salesRep?.toLowerCase().includes(uName) ||
+      lead.createdBy === uEmail ||
+      lead.region === (user as any).region ||
       true
     );
   });
@@ -99,6 +99,78 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
     totalCost: '',
     estimatedGeneration: ''
   });
+
+  const [roofTypesList, setRoofTypesList] = useState<{ id?: string; name: string; structureType?: string; tiltAngle?: string }[]>([]);
+  const [isManageRoofTypesOpen, setIsManageRoofTypesOpen] = useState(false);
+  const [editingRoofId, setEditingRoofId] = useState<string | null>(null);
+  const [roofFormName, setRoofFormName] = useState('');
+  const [roofFormStructure, setRoofFormStructure] = useState('Fixed Mount');
+  const [roofFormTilt, setRoofFormTilt] = useState('15°');
+  const [isSavingRoofType, setIsSavingRoofType] = useState(false);
+
+  useEffect(() => {
+    const unsubRoofs = onSnapshot(collection(db, 'roofTypes'), (snapshot) => {
+      if (snapshot.empty) {
+        const defaults = [
+          { name: 'RCC (Flat Roof)', structureType: 'Ballasted / Anchor Fixed Tilt', tiltAngle: '15° - 20°' },
+          { name: 'Industrial Tin Shed', structureType: 'Mini Rail / Klip-lok Clamps', tiltAngle: 'Parallel to Roof' },
+          { name: 'Tiled Roof', structureType: 'Tile Hooks & Profile Rails', tiltAngle: 'Pitch Slope' },
+          { name: 'Asbestos Sheet', structureType: 'Hanger Bolts & Long Rails', tiltAngle: 'Parallel to Roof' },
+          { name: 'Ground Mount Structure', structureType: 'GI Piled Foundation', tiltAngle: '20° - 25°' },
+          { name: 'Elevated Super Structure', structureType: 'High Elevated Heavy MS/GI Columns', tiltAngle: '12° - 15°' }
+        ];
+        setRoofTypesList(defaults);
+      } else {
+        const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+        setRoofTypesList(items);
+      }
+    });
+    return () => unsubRoofs();
+  }, []);
+
+  const handleSaveRoofType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roofFormName.trim()) return;
+    setIsSavingRoofType(true);
+    try {
+      if (editingRoofId) {
+        await updateDoc(doc(db, 'roofTypes', editingRoofId), {
+          name: roofFormName.trim(),
+          structureType: roofFormStructure,
+          tiltAngle: roofFormTilt,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await addDoc(collection(db, 'roofTypes'), {
+          name: roofFormName.trim(),
+          structureType: roofFormStructure,
+          tiltAngle: roofFormTilt,
+          status: 'Active',
+          createdAt: serverTimestamp()
+        });
+        setNewLead(prev => ({ ...prev, roofType: roofFormName.trim() }));
+      }
+      setRoofFormName('');
+      setRoofFormStructure('Fixed Mount');
+      setRoofFormTilt('15°');
+      setEditingRoofId(null);
+    } catch (err) {
+      console.error('Error saving roof type:', err);
+      alert('Failed to save roof type.');
+    } finally {
+      setIsSavingRoofType(false);
+    }
+  };
+
+  const handleDeleteRoofType = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete roof type "${name}"?`)) return;
+    try {
+      await deleteDoc(doc(db, 'roofTypes', id));
+    } catch (err) {
+      console.error('Error deleting roof type:', err);
+      alert('Failed to delete roof type.');
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'leads'), orderBy('createdAt', 'desc'));
@@ -464,31 +536,31 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-in slide-in-from-bottom-4 duration-500">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
             {user?.role === 'Vendor' || user?.role === 'Vendor Employee' ? (
               <span className="px-2.5 py-0.5 bg-cyan-100 text-cyan-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-cyan-200">
-                <Building2 className="w-3.5 h-3.5 text-cyan-600" /> Vendor Lead Flow: {user.companyName || user.name} ({filteredLeads.length} Leads)
+                <Building2 className="w-3.5 h-3.5 text-cyan-600 shrink-0" /> Vendor Lead Flow: {user.companyName || user.name} ({filteredLeads.length} Leads)
               </span>
             ) : user?.role === 'Installer' || user?.role === 'Solar Installer' ? (
               <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-amber-200">
-                <Wrench className="w-3.5 h-3.5 text-amber-600" /> Installer Lead Flow: {user.name} ({filteredLeads.length} Leads)
+                <Wrench className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Installer Lead Flow: {user.name} ({filteredLeads.length} Leads)
               </span>
             ) : user?.role === 'Super Admin' || user?.role === 'Solar Company Admin' ? (
               <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-emerald-200">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Global Enterprise View: All India ({filteredLeads.length} Leads)
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Global Enterprise View: All India ({filteredLeads.length} Leads)
               </span>
             ) : (
               <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-blue-200">
-                <Users className="w-3.5 h-3.5 text-blue-600" /> Scoped Leads for {user?.name} ({filteredLeads.length})
+                <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" /> Scoped Leads for {user?.name} ({filteredLeads.length})
               </span>
             )}
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Sales Pipeline</h1>
-          <p className="text-slate-500 mt-1 font-medium">Capture and convert leads into active installations.</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Sales Pipeline</h1>
+          <p className="text-slate-500 mt-1 text-xs sm:text-sm font-medium">Capture and convert leads into active installations.</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-200"
+          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-200 cursor-pointer"
         >
           <Plus className="w-5 h-5" />
           Capture Lead
@@ -496,7 +568,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       </header>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-4 items-center">
+        <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-3 sm:gap-4 items-center">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
@@ -507,11 +579,11 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm font-medium"
             />
           </div>
-          <div className="flex gap-2 w-full md:w-auto">
+          <div className="flex gap-2 w-full sm:w-auto">
             <button
               onClick={() => setShowTrash(!showTrash)}
               className={cn(
-                "flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl font-bold text-sm transition-colors shadow-sm",
+                "flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl font-bold text-xs sm:text-sm transition-colors shadow-xs cursor-pointer",
                 showTrash
                   ? "bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
                   : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -520,14 +592,149 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
               <Trash2 className="w-4 h-4" />
               {showTrash ? 'Hide Trash' : 'View Trash'}
             </button>
-            <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors shadow-sm">
+            <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-600 font-bold text-xs sm:text-sm hover:bg-slate-50 transition-colors shadow-xs cursor-pointer">
               <Filter className="w-4 h-4" />
               Pipeline Filter
             </button>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile View: Touch-Optimized Cards (< md breakpoint) */}
+        <div className="block md:hidden divide-y divide-slate-100">
+          {filteredLeads.map((lead) => (
+            <div key={lead.id} className="p-4 space-y-3 hover:bg-slate-50/60 transition-colors">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-bold text-slate-900 text-base">{lead.name}</span>
+                    {lead.expectedLoad && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        {lead.expectedLoad} {lead.expectedLoadUnit || 'KW'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-slate-500 font-medium">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>{lead.address || 'Address N/A'}</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 uppercase tracking-widest shrink-0">
+                  {lead.source}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-slate-600 font-medium hover:text-emerald-600 transition-colors bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 truncate">
+                  <Mail className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span className="truncate">{lead.email}</span>
+                </a>
+                <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-slate-600 font-medium hover:text-emerald-600 transition-colors bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
+                  <Phone className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span>{lead.phone}</span>
+                </a>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-100/80">
+                <div>
+                  <select
+                    value={lead.status}
+                    onChange={(e) => updateLeadStatus(lead.id, e.target.value as LeadStatus, lead)}
+                    className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border outline-none cursor-pointer appearance-none",
+                      statusColors[lead.status] || "bg-slate-100 text-slate-700 border-slate-200"
+                    )}
+                  >
+                    <option value="New Lead">New Lead</option>
+                    <option value="Qualified">Qualified</option>
+                    <option value="Site Survey">Site Survey</option>
+                    <option value="Proposal">Proposal</option>
+                    <option value="Negotiation">Negotiation</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Installation">Installation</option>
+                    <option value="Completed">Completed</option>
+                    <option value="AMC">AMC</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setSelected3DLead(lead)}
+                    className="p-2 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-xl transition-all border border-teal-100 cursor-pointer"
+                    title="View 3D Rooftop Solar Model"
+                  >
+                    <Box className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedLeadForQuotation(lead);
+                      setIsQuotationModalOpen(true);
+                    }}
+                    className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all border border-emerald-100 cursor-pointer"
+                    title="Generate Quotation"
+                  >
+                    <FileText className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingLeadId(lead.id);
+                      setNewLead(lead);
+                      setIsModalOpen(true);
+                    }}
+                    className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-all border border-blue-100 cursor-pointer"
+                    title="Edit Lead"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  {showTrash ? (
+                    <>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm("Restore this lead?")) {
+                            await updateDoc(doc(db, 'leads', lead.id), { isDeleted: false });
+                          }
+                        }}
+                        className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all border border-emerald-100 cursor-pointer"
+                        title="Restore Lead"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLead(lead.id, true)}
+                        className="p-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all border border-red-100 cursor-pointer"
+                        title="Delete Permanently"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleDeleteLead(lead.id)}
+                      className="p-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl transition-all border border-red-100 cursor-pointer"
+                      title="Move to Trash"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {filteredLeads.length === 0 && (
+            <div className="p-8 text-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center">
+                  <Users className="w-6 h-6 text-slate-300" />
+                </div>
+                <p className="text-slate-500 font-medium text-sm">No leads in the pipeline.</p>
+                <button onClick={() => setIsModalOpen(true)} className="text-emerald-600 font-bold text-xs hover:underline cursor-pointer">Add first lead &rarr;</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop View: Full Table (>= md breakpoint) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-[0.15em]">
@@ -597,7 +804,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                   <td className="px-6 py-5 text-right space-x-2">
                     <button
                       onClick={() => setSelected3DLead(lead)}
-                      className="p-2 hover:bg-teal-50 hover:shadow-sm rounded-lg text-teal-600 transition-all border border-transparent hover:border-teal-100 group"
+                      className="p-2 hover:bg-teal-50 hover:shadow-sm rounded-lg text-teal-600 transition-all border border-transparent hover:border-teal-100 group cursor-pointer"
                       title="View 3D Rooftop Solar Model (GPS Lat/Long)"
                     >
                       <Box className="w-4 h-4" />
@@ -608,7 +815,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                         setSelectedLeadForQuotation(lead);
                         setIsQuotationModalOpen(true);
                       }}
-                      className="p-2 hover:bg-emerald-50 hover:shadow-sm rounded-lg text-emerald-600 transition-all border border-transparent hover:border-emerald-100 group"
+                      className="p-2 hover:bg-emerald-50 hover:shadow-sm rounded-lg text-emerald-600 transition-all border border-transparent hover:border-emerald-100 group cursor-pointer"
                       title="Generate Quotation"
                     >
                       <FileText className="w-4 h-4" />
@@ -619,7 +826,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                         setNewLead(lead);
                         setIsModalOpen(true);
                       }}
-                      className="p-2 hover:bg-blue-50 hover:shadow-sm rounded-lg text-blue-600 transition-all border border-transparent hover:border-blue-100"
+                      className="p-2 hover:bg-blue-50 hover:shadow-sm rounded-lg text-blue-600 transition-all border border-transparent hover:border-blue-100 cursor-pointer"
                       title="Edit Lead"
                     >
                       <Edit2 className="w-4 h-4" />
@@ -632,14 +839,14 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                               await updateDoc(doc(db, 'leads', lead.id), { isDeleted: false });
                             }
                           }}
-                          className="p-2 hover:bg-emerald-50 hover:shadow-sm rounded-lg text-emerald-600 transition-all border border-transparent hover:border-emerald-100"
+                          className="p-2 hover:bg-emerald-50 hover:shadow-sm rounded-lg text-emerald-600 transition-all border border-transparent hover:border-emerald-100 cursor-pointer"
                           title="Restore Lead"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
                         </button>
                         <button
                           onClick={() => handleDeleteLead(lead.id, true)}
-                          className="p-2 hover:bg-red-50 hover:shadow-sm rounded-lg text-red-600 transition-all border border-transparent hover:border-red-100"
+                          className="p-2 hover:bg-red-50 hover:shadow-sm rounded-lg text-red-600 transition-all border border-transparent hover:border-red-100 cursor-pointer"
                           title="Delete Permanently"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -648,7 +855,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                     ) : (
                       <button
                         onClick={() => handleDeleteLead(lead.id)}
-                        className="p-2 hover:bg-red-50 hover:shadow-sm rounded-lg text-red-600 transition-all border border-transparent hover:border-red-100"
+                        className="p-2 hover:bg-red-50 hover:shadow-sm rounded-lg text-red-600 transition-all border border-transparent hover:border-red-100 cursor-pointer"
                         title="Move to Trash"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -665,7 +872,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                         <Users className="w-6 h-6 text-slate-300" />
                       </div>
                       <p className="text-slate-500 font-medium text-sm">No leads in the pipeline.</p>
-                      <button onClick={() => setIsModalOpen(true)} className="text-emerald-600 font-bold text-xs hover:underline">Add first lead &rarr;</button>
+                      <button onClick={() => setIsModalOpen(true)} className="text-emerald-600 font-bold text-xs hover:underline cursor-pointer">Add first lead &rarr;</button>
                     </div>
                   </td>
                 </tr>
@@ -677,14 +884,14 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
 
       {isModalOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-3 sm:p-6 flex items-center justify-center py-6 sm:py-10"
           onClick={() => {
             setIsModalOpen(false);
             setEditingLeadId(null);
           }}
         >
           <div 
-            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
+            className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] sm:max-h-[85vh] flex flex-col min-h-0 overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
             onClick={e => e.stopPropagation()}
           >
             {/* Sticky Header with prominent Close button */}
@@ -850,17 +1057,38 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                   </h4>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Roof Type</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Roof Type</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsManageRoofTypesOpen(true)}
+                      className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Add or Edit Roof Types"
+                    >
+                      <Plus className="w-3 h-3 text-emerald-600" />
+                      <span>+ Add / Edit Roof Type</span>
+                    </button>
+                  </div>
                   <select
-                    value={newLead.roofType}
-                    onChange={e => setNewLead({ ...newLead, roofType: e.target.value })}
+                    value={newLead.roofType || ''}
+                    onChange={e => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsManageRoofTypesOpen(true);
+                      } else {
+                        setNewLead({ ...newLead, roofType: e.target.value });
+                      }
+                    }}
                     className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium cursor-pointer"
                   >
                     <option value="">Select Roof Type...</option>
-                    <option value="RCC">RCC (Flat Roof)</option>
-                    <option value="Tin Shed">Industrial Tin Shed</option>
-                    <option value="Tiled">Tiled Roof</option>
-                    <option value="Asbestos">Asbestos Sheet</option>
+                    {roofTypesList.map((rt) => (
+                      <option key={rt.id || rt.name} value={rt.name}>
+                        {rt.name} {rt.structureType ? `(${rt.structureType})` : ''}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-bold text-emerald-600 bg-emerald-50">
+                      + Add New Roof Type...
+                    </option>
                   </select>
                 </div>
                 <div>
@@ -1057,7 +1285,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
               </div>
 
               {/* Sticky Bottom Form Action Buttons */}
-              <div className="pt-4 flex gap-3 border-t border-slate-100 shrink-0">
+              <div className="pt-4 flex flex-col-reverse sm:flex-row gap-3 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -1085,11 +1313,11 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       {/* GENERATE QUOTATION MODAL */}
       {isQuotationModalOpen && selectedLeadForQuotation && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-3 sm:p-6 flex items-center justify-center py-6 sm:py-10"
           onClick={() => setIsQuotationModalOpen(false)}
         >
           <div 
-            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
+            className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
             onClick={e => e.stopPropagation()}
           >
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0 sticky top-0 z-30 shadow-xs">
@@ -1249,7 +1477,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
                 </div>
               </div>
 
-              <div className="pt-4 flex gap-3 border-t border-slate-100 shrink-0">
+              <div className="pt-4 flex flex-col-reverse sm:flex-row gap-3 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsQuotationModalOpen(false)}
@@ -1274,11 +1502,11 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
       {/* Approval & Location-Based Regional Officer Assignment Modal */}
       {isAssignModalOpen && selectedLeadForApproval && (
         <div 
-          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-[200] overflow-y-auto p-3 sm:p-6 flex items-center justify-center py-6 sm:py-10"
           onClick={() => setIsAssignModalOpen(false)}
         >
           <div 
-            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
+            className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100"
             onClick={e => e.stopPropagation()}
           >
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-xs">
@@ -1394,7 +1622,7 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
               </div>
 
               {/* Modal Buttons */}
-              <div className="pt-3 flex gap-3 border-t border-slate-100 shrink-0">
+              <div className="pt-3 flex flex-col-reverse sm:flex-row gap-3 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAssignModalOpen(false)}
@@ -1416,14 +1644,181 @@ export default function CRM({ initialFilter }: { initialFilter?: string }) {
         </div>
       )}
 
+      {/* MANAGE ROOF TYPES MODAL */}
+      {isManageRoofTypesOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[200] overflow-y-auto p-3 sm:p-6 flex items-center justify-center py-6 sm:py-10"
+          onClick={() => setIsManageRoofTypesOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] sm:max-h-[85vh] flex flex-col min-h-0 overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">Manage Roof Types</h3>
+                  <p className="text-[11px] text-slate-400">Add, edit, or remove solar mounting roof types across your platform</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsManageRoofTypesOpen(false);
+                  setEditingRoofId(null);
+                  setRoofFormName('');
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Add / Edit Form */}
+            <form onSubmit={handleSaveRoofType} className="p-5 border-b border-slate-100 bg-slate-50 space-y-3">
+              <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>{editingRoofId ? '✏️ Edit Roof Type' : '➕ Add New Roof Type'}</span>
+                {editingRoofId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingRoofId(null);
+                      setRoofFormName('');
+                      setRoofFormStructure('Fixed Mount');
+                      setRoofFormTilt('15°');
+                    }}
+                    className="text-[10px] text-slate-500 hover:underline"
+                  >
+                    Cancel Editing
+                  </button>
+                )}
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Roof Type Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={roofFormName}
+                    onChange={e => setRoofFormName(e.target.value)}
+                    placeholder="e.g. Klip-Lok Metal Sheet / Terrace Gazebo"
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Structure / Mounting Type</label>
+                  <input
+                    type="text"
+                    value={roofFormStructure}
+                    onChange={e => setRoofFormStructure(e.target.value)}
+                    placeholder="e.g. Mini-Rail / Anchor Fixed"
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Recommended Tilt Angle</label>
+                  <input
+                    type="text"
+                    value={roofFormTilt}
+                    onChange={e => setRoofFormTilt(e.target.value)}
+                    placeholder="e.g. 15° - 20° / Pitch Slope"
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSavingRoofType || !roofFormName.trim()}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingRoofType ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  <span>{editingRoofId ? 'Update Roof Type' : 'Save & Select Roof Type'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* List of Existing Roof Types */}
+            <div className="p-5 max-h-64 overflow-y-auto space-y-2">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2">Available Roof Types ({roofTypesList.length})</p>
+              {roofTypesList.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No roof types configured yet.</p>
+              ) : (
+                roofTypesList.map((roof) => (
+                  <div 
+                    key={roof.id || roof.name}
+                    className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between hover:border-emerald-500/40 transition-colors"
+                  >
+                    <div>
+                      <p className="text-xs font-black text-slate-800">{roof.name}</p>
+                      {roof.structureType && (
+                        <p className="text-[10px] text-slate-500 font-medium">{roof.structureType} • Tilt: {roof.tiltAngle || 'Standard'}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingRoofId(roof.id || null);
+                          setRoofFormName(roof.name);
+                          setRoofFormStructure(roof.structureType || 'Fixed Mount');
+                          setRoofFormTilt(roof.tiltAngle || '15°');
+                        }}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer"
+                        title="Edit Roof Type"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      {roof.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRoofType(roof.id!, roof.name)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                          title="Delete Roof Type"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-100 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManageRoofTypesOpen(false);
+                  setEditingRoofId(null);
+                  setRoofFormName('');
+                }}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3D ROOFTOP SOLAR VIEW MODAL */}
       {selected3DLead && (
         <div 
-          className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] overflow-y-auto p-3 sm:p-6 flex items-start justify-center pt-24 sm:pt-28 pb-16"
+          className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[200] overflow-y-auto p-3 sm:p-6 flex items-center justify-center py-6 sm:py-10"
           onClick={() => setSelected3DLead(null)}
         >
           <div 
-            className="relative bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[calc(100vh-8.5rem)] flex flex-col min-h-0 overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200"
+            className="relative bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] sm:max-h-[85vh] flex flex-col min-h-0 overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200"
             onClick={e => e.stopPropagation()}
           >
             <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center text-white shrink-0 sticky top-0 z-30 shadow-xs">

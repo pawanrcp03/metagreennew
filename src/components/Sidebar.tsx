@@ -24,7 +24,8 @@ import {
   Menu,
   X,
   Search,
-  ArrowRight
+  ArrowRight,
+  Receipt
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { ViewType, UserRole } from '@/src/types';
@@ -139,26 +140,34 @@ export default function Sidebar({ currentView, setView, userRole }: SidebarProps
       items: [
         {
           id: 'proposal',
-          label: 'Quotations',
-          subHeader: 'Customer Sales Proposals & ROI',
-          description: 'System generation estimates, branding headers & quotation approvals',
+          label: 'Proposal',
+          subHeader: 'Customer Sales Proposals & 3D Pitch',
+          description: 'System generation estimates, 3D pitch deck & solar proposal export',
           icon: FileText,
           roles: ['Super Admin', 'Solar Company Admin', 'Sales Executive', 'Vendor', 'Vendor Employee', 'Installer', 'Solar Installer', 'Project Manager']
         },
         {
           id: 'quotation',
-          label: 'Invoice',
-          subHeader: 'Estimates & 70:30 Billing Rule',
-          description: '70% Goods & 30% Services tax calculation rule & automated CRM sync',
+          label: 'Estimate',
+          subHeader: 'Estimates & 70:30 Cost Breakdown',
+          description: 'Detailed system material estimate, labor cost & customer quotation approvals',
           icon: Calculator,
           roles: ['Super Admin', 'Solar Company Admin', 'Sales Executive', 'Finance Manager', 'Vendor', 'Vendor Employee', 'Installer', 'Solar Installer']
+        },
+        {
+          id: 'invoice',
+          label: 'Invoice',
+          subHeader: 'Proforma & Standard Billing Invoice',
+          description: 'Progress billing, milestone invoicing & proforma customer statements',
+          icon: FileText,
+          roles: ['Super Admin', 'Solar Company Admin', 'Finance Manager', 'Sales Executive', 'Vendor', 'Vendor Employee', 'Installer']
         },
         {
           id: 'tax-invoice',
           label: 'Tax Invoice',
           subHeader: 'Official GST Tax Invoice Generator',
           description: 'Full GST 70:30 Tax Invoice generator with QR code and PDF print download',
-          icon: IndianRupee,
+          icon: Receipt,
           roles: ['Super Admin', 'Solar Company Admin', 'Finance Manager', 'Auditor', 'Sales Executive', 'Vendor', 'Installer']
         }
       ]

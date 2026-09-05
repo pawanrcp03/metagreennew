@@ -1287,7 +1287,7 @@ export default function Inventory({ onNavigateToPO }: { onNavigateToPO?: (vendor
 
       {/* MARK CONSUMED ON SITE MODAL */}
       {isConsumeModalOpen && selectedItemForConsumption && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 font-sans">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
               <div>
@@ -1353,7 +1353,7 @@ export default function Inventory({ onNavigateToPO }: { onNavigateToPO?: (vendor
 
       {/* MATERIAL REQUISITION MODAL */}
       {isRequisitionModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 font-sans">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
               <div>
@@ -1385,7 +1385,7 @@ export default function Inventory({ onNavigateToPO }: { onNavigateToPO?: (vendor
 
       {/* PROVISION NEW STOCK MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-3 sm:p-5">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 font-sans">
             {/* Fixed Header */}
             <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
@@ -1866,7 +1866,7 @@ export default function Inventory({ onNavigateToPO }: { onNavigateToPO?: (vendor
 
       {/* QUICK ADD VENDOR MODAL */}
       {isQuickAddVendorOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-3 sm:p-4">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 font-sans">
             <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex justify-between items-center shrink-0">
               <div>
@@ -2086,7 +2086,7 @@ export default function Inventory({ onNavigateToPO }: { onNavigateToPO?: (vendor
       {/* ========================================================== */}
       {successModal.isOpen && (
         <div
-          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setSuccessModal({ ...successModal, isOpen: false })}
         >
           <div

@@ -36,9 +36,9 @@ export default function BookDemoModal({ onClose, onOpenSignUp }: BookDemoModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 text-slate-100">
-        
+
         {/* Header */}
         <div className="p-6 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div>

@@ -755,7 +755,7 @@ export default function VendorPortal() {
 
       {/* ADD VENDOR EMPLOYEE MODAL */}
       {isEmpModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
@@ -885,7 +885,7 @@ export default function VendorPortal() {
 
       {/* CREATE & ASSIGN TASK MODAL */}
       {isTaskModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
